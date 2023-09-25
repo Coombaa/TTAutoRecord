@@ -6,4 +6,4 @@ m3u8_bypass.txt
 room_ids.txt
 locks/
 *.pyc
-*.pyc
+videos/
