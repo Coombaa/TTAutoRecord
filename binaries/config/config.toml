@@ -1,0 +1,12 @@
+chunks = 100
+duration = 1
+proxy_url = [ "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt",]
+proxy_count = 500
+proxy_refresh = 1200
+id_check_concurrency = 4
+live_urls_recheck = 10
+retry_delay_min = 1000
+retry_delay_max = 1500
+segment_cleanup = 6
+mp4_segmentation = "Off"
+mp4_segment_length = 20

@@ -7,3 +7,6 @@ room_ids.txt
 locks/
 *.pyc
 videos/
+*.lock
+target/
+binaries/config/lists/monitored_users.txt
