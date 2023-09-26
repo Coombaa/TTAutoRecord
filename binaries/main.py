@@ -111,7 +111,7 @@ def get_room_ids(urls):
             url = f"https://{url}"
         
         username = extract_username(url)
-        response = requests.get(url)
+        response = requests.get(url, timeout=60)
         content = response.content
         matches = list(re.finditer(b"room_id=(\d+)", content))
         

@@ -11,6 +11,7 @@ use std::error::Error;
 use tokio::time::timeout;
 use config::{Config, File, FileFormat};
 use std::process::Stdio;
+use std::collections::HashSet;
 
 
 static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1";
@@ -86,6 +87,19 @@ async fn clear_lock_files_directory() -> Result<(), Box<dyn std::error::Error>> 
 }
 
 async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) -> Result<FetchResult, Box<dyn std::error::Error>> {
+    // Read flv_users.txt into a HashSet for quick lookup
+    let path = "./config/lists/flv_users.txt";
+    let flv_users = match std::fs::File::open(&path) {
+
+        Ok(file) => {
+            let buf = BufReader::new(file);
+            buf.lines()
+                .filter_map(Result::ok)
+                .collect::<HashSet<String>>()
+        },
+        Err(_) => HashSet::new(),
+    };
+
     let url = format!("https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={}", room_id);
     let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
 
@@ -99,14 +113,44 @@ async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) ->
     if text.contains("\"status\":2") {
         if let Some(username_cap) = RE_USERNAME.captures(&text) {
             let username = username_cap[1].to_string();
-            let mut flv_urls: Vec<String> = Vec::new();
+            let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
+
+            if flv_users.contains(&username) {
+                if let Some(flv_url) = flv_urls.first() {
+                    return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
+                }
+            }
+
             let m3u8_url = match RE_M3U8.find(&text) {
                 Some(m) => Some(m.as_str().to_string()),
                 None => None,
             };
-            flv_urls.extend(RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()));
 
             if let Some(url) = &m3u8_url {
+                let mut not_found_counter = 0;
+                for attempt in 1..=30 {  // Starts from 1 for better readability in the print statement
+                    let response = timeout(Duration::from_secs(2), client.get(url).send()).await?;
+                    if let Ok(res) = response {
+                        if res.status() == reqwest::StatusCode::NOT_FOUND {
+                            not_found_counter += 1;
+                            println!("Attempt {} for {}: 404 Not Found", attempt, username);
+                        } else {
+                            not_found_counter = 0;
+                        }
+                    }
+                    
+                    if not_found_counter >= 30 {
+                        let mut file = std::fs::OpenOptions::new()
+                            .write(true)
+                            .append(true)
+                            .open("./config/lists/flv_users.txt")
+                            .unwrap_or_else(|_| std::fs::File::create("./config/lists/flv_users.txt").unwrap());
+            
+                        writeln!(file, "{}", username)?;
+                        print!("M3U8 file doesn't work for {} adding to flv_users.txt", username);
+                        break;
+                    }
+                }
                 return Ok(FetchResult::UrlAndUsername(url.clone(), username));
             }
 
@@ -124,7 +168,7 @@ async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) ->
             if let Some(flv_url) = flv_urls.first() {
                 return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
             }
-            
+
             return Ok(FetchResult::NoUrlInResponse);
         }
     } else {
@@ -144,6 +188,7 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
 
     match fetch_result {
         FetchResult::UrlAndUsername(url, username) => {
+            
             let lock_file_path = format!("{}/{}.lock", LOCK_DIRECTORY, username);
             if Path::new(&lock_file_path).exists() {
                 return Ok(());
@@ -163,6 +208,17 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
 
             //println!("{}: {} is live", Local::now().format("%Y-%m-%d %H:%M:%S"), username);
 
+            // Before downloading, delete other segments not related to the current stream ID
+            let mut dir = tokio::fs::read_dir(&video_folder).await.expect("Failed to read video folder");
+            while let Some(entry) = dir.next_entry().await.expect("Failed to read video folder") {
+                if entry.path().is_file() {
+                    let file_name = entry.file_name();
+                    let file_name_str = file_name.to_str().unwrap();
+                    if !file_name_str.contains(&stream_id) {
+                        tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
+                    }
+                }
+            }
 
             //download video
             tokio::spawn(async move {
@@ -218,7 +274,7 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
             if video_files_to_concat.len() < 2 {
                 // If there's only one video, copy and rename it
                 let copied_path = format!("{}/{}_{}_{}.mp4", output_folder, username, stream_id, date);
-                if let Err(copy_error) = fs::copy(&video_path, &copied_path) {
+                if let Err(_copy_error) = fs::copy(&video_path, &copied_path) {
                     //println!("Failed to copy video to main folder: {}", copy_error);
                     tokio::fs::remove_file(&lock_file_path).await.expect("Failed to remove lock file");
                 }
