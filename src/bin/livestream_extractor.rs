@@ -12,7 +12,8 @@ use tokio::time::timeout;
 use config::{Config, File, FileFormat};
 use std::process::Stdio;
 use std::collections::HashSet;
-
+use tokio::time::sleep;
+use reqwest::StatusCode;
 
 static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1";
 static FFMPEG_PATH: &str = "ffmpeg.exe";
@@ -87,10 +88,11 @@ async fn clear_lock_files_directory() -> Result<(), Box<dyn std::error::Error>> 
 }
 
 async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) -> Result<FetchResult, Box<dyn std::error::Error>> {
-    // Read flv_users.txt into a HashSet for quick lookup
+    let max_retries = 10;  // Define max retry attempts
+    let retry_delay = Duration::from_secs(5);  // 5-second delay between retries
+
     let path = "./config/lists/flv_users.txt";
     let flv_users = match std::fs::File::open(&path) {
-
         Ok(file) => {
             let buf = BufReader::new(file);
             buf.lines()
@@ -101,80 +103,53 @@ async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) ->
     };
 
     let url = format!("https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={}", room_id);
-    let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
 
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(FetchResult::NotFound);
-    }
+    for _ in 0..max_retries {  // Retry loop
+        let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
+        let content = response.bytes().await?;
+        let text = String::from_utf8_lossy(&content);
 
-    let content = response.bytes().await?;
-    let text = String::from_utf8_lossy(&content);
+        if text.contains("\"status\":2") {
+            if let Some(username_cap) = RE_USERNAME.captures(&text) {
+                let username = username_cap[1].to_string();
 
-    if text.contains("\"status\":2") {
-        if let Some(username_cap) = RE_USERNAME.captures(&text) {
-            let username = username_cap[1].to_string();
-            let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
-
-            if flv_users.contains(&username) {
-                if let Some(flv_url) = flv_urls.first() {
-                    return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
+                if flv_users.contains(&username) {
+                    let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
+                    if let Some(flv_url) = flv_urls.first() {
+                        return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
+                    }
                 }
-            }
 
-            let m3u8_url = match RE_M3U8.find(&text) {
-                Some(m) => Some(m.as_str().to_string()),
-                None => None,
-            };
+                let m3u8_url = RE_M3U8.find(&text).map(|m| m.as_str().to_string());
 
-            if let Some(url) = &m3u8_url {
-                let mut not_found_counter = 0;
-                for attempt in 1..=30 {  // Starts from 1 for better readability in the print statement
-                    let response = timeout(Duration::from_secs(2), client.get(url).send()).await?;
-                    if let Ok(res) = response {
-                        if res.status() == reqwest::StatusCode::NOT_FOUND {
-                            not_found_counter += 1;
-                            println!("Attempt {} for {}: 404 Not Found", attempt, username);
-                        } else {
-                            not_found_counter = 0;
+                if let Some(url) = &m3u8_url {
+                    let m3u8_response = client.get(url).send().await?;
+                    if m3u8_response.status() != StatusCode::NOT_FOUND {
+                        return Ok(FetchResult::UrlAndUsername(url.clone(), username));
+                    }
+                }
+
+                let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
+                for flv_url in &flv_urls {
+                    let response = client.get(flv_url).send().await;
+
+                    if let Ok(response) = response {
+                        if response.status().is_success() {
+                            let flv_url_actual = response.url().to_string();
+                            return Ok(FetchResult::UrlAndUsername(flv_url_actual, username));
                         }
                     }
-                    
-                    if not_found_counter >= 30 {
-                        let mut file = std::fs::OpenOptions::new()
-                            .write(true)
-                            .append(true)
-                            .open("./config/lists/flv_users.txt")
-                            .unwrap_or_else(|_| std::fs::File::create("./config/lists/flv_users.txt").unwrap());
-            
-                        writeln!(file, "{}", username)?;
-                        print!("M3U8 file doesn't work for {} adding to flv_users.txt", username);
-                        break;
-                    }
                 }
-                return Ok(FetchResult::UrlAndUsername(url.clone(), username));
+
+                // If no m3u8_url or flv_url is found or m3u8 is 404, delay before retry
+                sleep(retry_delay).await;
             }
-
-            for flv_url in &flv_urls {
-                let response = client.get(flv_url).send().await;
-
-                if let Ok(response) = response {
-                    if response.status().is_success() {
-                        let flv_url_actual = response.url().to_string();
-                        return Ok(FetchResult::UrlAndUsername(flv_url_actual, username));
-                    }
-                }
-            }
-
-            if let Some(flv_url) = flv_urls.first() {
-                return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
-            }
-
-            return Ok(FetchResult::NoUrlInResponse);
+        } else {
+            return Ok(FetchResult::NotLive);
         }
-    } else {
-        return Ok(FetchResult::NotLive);
     }
 
+    // If the loop completes without returning, then it exhausted all retries
     Ok(FetchResult::NoUrlInResponse)
 }
 

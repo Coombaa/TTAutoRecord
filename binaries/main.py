@@ -12,10 +12,12 @@ import re
 from urllib.parse import urlparse
 import os
 import subprocess
+from requests.exceptions import ChunkedEncodingError
+
 
 
 # Get the current working directory
-current_directory = os.path.dirname(os.path.realpath(__file__))
+current_directory = os.getcwd()
 
 # Clear monitored_users.txt
 monitored_users_path = os.path.join(current_directory, 'config', 'lists', 'monitored_users.txt')
@@ -24,7 +26,8 @@ with open(monitored_users_path, 'w') as f:
 
 def start_browser():
     print("Starting browser..")
-    geckodriver_path = 'geckodriver.exe'
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    geckodriver_path = os.path.join(script_dir, "geckodriver.exe")
     firefox_binary_path = 'C:/Program Files/Mozilla Firefox/firefox.exe'
     options = Options()
     options.binary_location = firefox_binary_path
@@ -40,7 +43,7 @@ def start_browser():
     
 def auth(driver):
     print("Authenticating..")
-    cookies_path = os.path.join(current_directory, './config/cookies.json')
+    cookies_path = os.path.join(os.getcwd(), 'config', 'cookies.json')
 
     # Load cookies from the exported cookie file
     with open(cookies_path, 'r') as f:
@@ -106,12 +109,29 @@ def extract_username(url):
 
 def get_room_ids(urls):
     room_and_users = []
+    max_retries = 10
+    
     for url in urls:
         if not url.startswith('http'):
             url = f"https://{url}"
         
         username = extract_username(url)
-        response = requests.get(url, timeout=60)
+        response = None  # Initialize response variable
+        
+        for i in range(max_retries):
+            try:
+                response = requests.get(url, timeout=60)
+                break  # Successful request, break the retry loop
+            except ChunkedEncodingError:
+                if i == max_retries - 1:
+                    print(f"Failed to fetch {url} after {max_retries} retries.")
+                    continue
+
+        # If after all retries, response is still None, skip this URL
+        if response is None:
+            print(f"Skipping {url} due to failed requests.")
+            continue
+
         content = response.content
         matches = list(re.finditer(b"room_id=(\d+)", content))
         
@@ -119,7 +139,7 @@ def get_room_ids(urls):
             longest_room_id = max([match.group(1).decode("utf-8") for match in matches], key=len)
             room_and_users.append((username, longest_room_id))
     
-    monitored_users_path = os.path.join(current_directory, 'config', 'lists', 'monitored_users.txt')
+    monitored_users_path = os.path.join(os.getcwd(), 'config', 'lists', 'monitored_users.txt')
     
     # Writing room IDs and usernames to room_ids.txt and overwriting each time
     with open(monitored_users_path, 'w') as f:
