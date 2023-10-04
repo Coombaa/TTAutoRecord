@@ -1,5 +1,7 @@
 #![allow(deprecated)]
-use reqwest;
+use reqwest::{self, Client};
+use tokio::sync::Mutex;
+use std::sync::Arc;
 use std::time::Duration;
 use chrono::Local;
 use once_cell::sync::Lazy;
@@ -11,9 +13,9 @@ use std::error::Error;
 use tokio::time::timeout;
 use config::{Config, File, FileFormat};
 use std::process::Stdio;
-use std::collections::HashSet;
-use tokio::time::sleep;
-use reqwest::StatusCode;
+use std::collections::HashMap;
+use std::time::SystemTime;
+use std::fs::metadata;
 
 static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1";
 static FFMPEG_PATH: &str = "ffmpeg.exe";
@@ -25,8 +27,8 @@ static RE_USERNAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#""display_id":"([^"]
 enum FetchResult {
     UrlAndUsername(String, String),
     NotFound,
-    NoUrlInResponse,
-    NotLive,
+    LiveEnded,
+    UsernameMissing,
 }
 
 #[tokio::main]
@@ -46,9 +48,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         loop {
             let urls = read_room_ids_from_file()?;
+            let state = Arc::new(Mutex::new(HashMap::new()));
             for chunk in urls.chunks(chunks) {
                 let futures: Vec<_> = chunk.iter().map(|url| {
-                    download_video(&client, url)
+                    download_video(&client, url, state.clone())
                 }).collect();
                 futures::future::join_all(futures).await;
                 tokio::time::sleep(Duration::from_secs(duration)).await;
@@ -87,70 +90,84 @@ async fn clear_lock_files_directory() -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
-async fn fetch_room_info_and_extract(client: &reqwest::Client, room_id: &str) -> Result<FetchResult, Box<dyn std::error::Error>> {
-    let max_retries = 10;  // Define max retry attempts
-    let retry_delay = Duration::from_secs(5);  // 5-second delay between retries
-
-    let path = "./config/lists/flv_users.txt";
-    let flv_users = match std::fs::File::open(&path) {
-        Ok(file) => {
-            let buf = BufReader::new(file);
-            buf.lines()
-                .filter_map(Result::ok)
-                .collect::<HashSet<String>>()
-        },
-        Err(_) => HashSet::new(),
-    };
-
+async fn fetch_room_info_and_extract(client: &Client, room_id: &str, state: Arc<Mutex<HashMap<String, String>>>) -> Result<FetchResult, Box<dyn Error>> {
+    let _current_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    //println!("DEBUG {}: Starting fetch_room_info_and_extract for room_id: {}", current_time, room_id);
+    
     let url = format!("https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={}", room_id);
+    //println!("DEBUG {}: Fetching room info from URL: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), url);
 
-    for _ in 0..max_retries {  // Retry loop
-        let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
-        let content = response.bytes().await?;
-        let text = String::from_utf8_lossy(&content);
+    let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
 
-        if text.contains("\"status\":2") {
-            if let Some(username_cap) = RE_USERNAME.captures(&text) {
-                let username = username_cap[1].to_string();
+    //println!("DEBUG {}: Received response with status: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), response.status());
 
-                if flv_users.contains(&username) {
-                    let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
-                    if let Some(flv_url) = flv_urls.first() {
-                        return Ok(FetchResult::UrlAndUsername(flv_url.to_string(), username));
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        //println!("DEBUG {}: Status is NOT_FOUND. Returning.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+        return Ok(FetchResult::NotFound);
+    }
+
+    let content = response.bytes().await?;
+    let text: std::borrow::Cow<'_, str> = String::from_utf8_lossy(&content);
+
+    ////println!("DEBUG {}: Received content: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), text);
+
+    let mut state = state.lock().await;
+
+    //println!("DEBUG {}: Locked state mutex", Local::now().format("%Y-%m-%d %H:%M:%S"));
+
+    if text.contains("\"status\":2") {
+        //println!("DEBUG {}: Found status: 2", Local::now().format("%Y-%m-%d %H:%M:%S"));
+        
+        if let Some(username_cap) = RE_USERNAME.captures(&text) {
+            let username = username_cap[1].to_string();
+            let m3u8_url = RE_M3U8.find(&text).map(|m| m.as_str().to_string());
+
+            //println!("DEBUG {}: Username: {}, M3U8 URL: {:?}", Local::now().format("%Y-%m-%d %H:%M:%S"), username, m3u8_url);
+
+            if let Some(stored_url_type) = state.get(room_id) {
+                if stored_url_type == "m3u8" && m3u8_url.is_some() {
+                    //println!("DEBUG {}: Returning M3U8 URL and username", Local::now().format("%Y-%m-%d %H:%M:%S"));
+                    return Ok(FetchResult::UrlAndUsername(m3u8_url.unwrap(), username));
+                }
+            }
+
+            if m3u8_url.is_some() {
+                let m3u8 = m3u8_url.as_ref().unwrap();
+                let response = client.get(m3u8).send().await;
+
+                if let Ok(response) = response {
+                    if response.status().is_success() {
+                        state.insert(room_id.to_string(), "m3u8".to_string());
+                        //println!("DEBUG {}: Found M3U8 URL. Processing...", Local::now().format("%Y-%m-%d %H:%M:%S"));
+                        return Ok(FetchResult::UrlAndUsername(m3u8.clone(), username));
                     }
                 }
-
-                let m3u8_url = RE_M3U8.find(&text).map(|m| m.as_str().to_string());
-
-                if let Some(url) = &m3u8_url {
-                    let m3u8_response = client.get(url).send().await?;
-                    if m3u8_response.status() != StatusCode::NOT_FOUND {
-                        return Ok(FetchResult::UrlAndUsername(url.clone(), username));
-                    }
-                }
-
+            } else {
                 let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
+                //println!("DEBUG {}: No M3U8 URL found. Checking FLV URLs...", Local::now().format("%Y-%m-%d %H:%M:%S"));
+
                 for flv_url in &flv_urls {
                     let response = client.get(flv_url).send().await;
 
                     if let Ok(response) = response {
                         if response.status().is_success() {
                             let flv_url_actual = response.url().to_string();
+                            state.insert(room_id.to_string(), "flv".to_string());
+                            //println!("DEBUG {}: Username: {}, FLV URL: {:?}", Local::now().format("%Y-%m-%d %H:%M:%S"), username, flv_url);
                             return Ok(FetchResult::UrlAndUsername(flv_url_actual, username));
                         }
                     }
                 }
-
-                // If no m3u8_url or flv_url is found or m3u8 is 404, delay before retry
-                sleep(retry_delay).await;
             }
         } else {
-            return Ok(FetchResult::NotLive);
+            //println!("DEBUG {}: Username not found. Returning UsernameMissing.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+            return Ok(FetchResult::UsernameMissing);
         }
+    } else {
+        // Live ended
     }
 
-    // If the loop completes without returning, then it exhausted all retries
-    Ok(FetchResult::NoUrlInResponse)
+    Ok(FetchResult::LiveEnded)
 }
 
 fn extract_stream_id(url: &str) -> Option<String> {
@@ -158,8 +175,8 @@ fn extract_stream_id(url: &str) -> Option<String> {
     re.captures(url).and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
 }
 
-async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let fetch_result = fetch_room_info_and_extract(client, room_id).await?;
+async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mutex<HashMap<String, String>>>) -> Result<(), Box<dyn std::error::Error>> {
+    let fetch_result = fetch_room_info_and_extract(client, room_id, state.clone()).await?;
 
     match fetch_result {
         FetchResult::UrlAndUsername(url, username) => {
@@ -174,12 +191,12 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
             let datetime = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
             let date: String = Local::now().format("%Y-%m-%d").to_string();
             let stream_id = extract_stream_id(&url).unwrap_or_else(|| "unknown".to_string());
-            let video_folder = format!("../videos/{}/segments/", username);
+            let video_folder = format!("../segments/{}/segments/", username);
             fs::create_dir_all(&video_folder)?; // Create the user-specific folder if it doesn't exist
 
             let video_path = format!("{}/{}_{}_{}.mp4", video_folder, username, stream_id, datetime);
-            let output_path = format!("../videos/{}/{}_{}_{}.mp4", username, username, stream_id, date);
-            let output_folder = format!("../videos/{}", username);
+            let output_path = format!("../videos/{}_{}_{}.mp4", username, stream_id, date);
+            let output_folder = format!("../videos/");
 
             //println!("{}: {} is live", Local::now().format("%Y-%m-%d %H:%M:%S"), username);
 
@@ -190,6 +207,24 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
                     let file_name = entry.file_name();
                     let file_name_str = file_name.to_str().unwrap();
                     if !file_name_str.contains(&stream_id) {
+                        tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
+                    }
+                }
+            }
+
+            // Before downloading, delete other segments not related to the current stream ID
+            let mut dir = tokio::fs::read_dir(&video_folder).await.expect("Failed to read video folder");
+            while let Some(entry) = dir.next_entry().await.expect("Failed to read video folder") {
+                if entry.path().is_file() {
+                    let file_name = entry.file_name();
+                    let file_name_str = file_name.to_str().unwrap();
+                    
+                    // Check if the file is more than 12 hours old
+                    let metadata = metadata(entry.path()).expect("Failed to read metadata");
+                    let modified_time = metadata.modified().expect("Failed to get modified time");
+                    let duration_since_modified = SystemTime::now().duration_since(modified_time).expect("Time went backwards");
+                    
+                    if duration_since_modified > Duration::from_secs(12 * 3600) || !file_name_str.contains(&stream_id) {
                         tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
                     }
                 }
@@ -287,13 +322,13 @@ async fn download_video(client: &reqwest::Client, room_id: &str) -> Result<(), B
         });
         },
         FetchResult::NotFound => {
-            println!("{}: {} is not found", Local::now().format("%Y-%m-%d %H:%M:%S"), room_id);
+            println!("{}: Error retrieving data for {} - You are most likely rate limited! Tweak your config.toml", Local::now().format("%Y-%m-%d %H:%M:%S"), room_id);
         },
-        FetchResult::NoUrlInResponse => {
-            println!("{}: No stream URL found for {} - You are most likely rate limited! Tweak your config.toml", Local::now().format("%Y-%m-%d %H:%M:%S"), room_id);
+        FetchResult::LiveEnded => {
+
         },
-        FetchResult::NotLive => {
-            // show nothing
+        FetchResult::UsernameMissing => {
+            
         },
     }
 
