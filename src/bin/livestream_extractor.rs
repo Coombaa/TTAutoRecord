@@ -21,7 +21,7 @@ static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like
 static FFMPEG_PATH: &str = "ffmpeg.exe";
 static LOCK_DIRECTORY: &str = "../lock_files";
 static RE_M3U8: Lazy<Regex> = Lazy::new(|| Regex::new("https://[^\"']+.m3u8").unwrap());
-static RE_FLV: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\.flv)""#).unwrap());
+static RE_FLV: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\_uhd.flv)""#).unwrap());
 static RE_USERNAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#""display_id":"([^"]+)""#).unwrap());
 
 enum FetchResult {
@@ -274,12 +274,18 @@ async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mute
                 }
             }
 
+            // wait 1 seconds for segment to be written
+            tokio::time::sleep(Duration::from_secs(1)).await;
+
             video_files_to_concat.sort();
 
             let mut concat_file = fs::File::create(format!("{}concat-{}.txt", video_folder, stream_id)).expect("Failed to create concat file");
             for video_file in &video_files_to_concat {
                 Write::write_all(&mut concat_file, format!("file '{}'\n", video_file).as_bytes()).expect("Failed to write to concat file");
             }
+
+            // wait 1 seconds for concat file to be written
+            tokio::time::sleep(Duration::from_secs(1)).await;
 
             if video_files_to_concat.len() < 2 {
                 // If there's only one video, copy and rename it
@@ -328,7 +334,7 @@ async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mute
 
         },
         FetchResult::UsernameMissing => {
-            
+
         },
     }
 
