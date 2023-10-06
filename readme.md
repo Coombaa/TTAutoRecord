@@ -1,5 +1,7 @@
 # TTAutoRecord: Automated TikTok Live Stream Recorder
 
+![Screenshot of TTAutoRecord](./screenshot.png)
+
 TTAutoRecord is a specialized utility designed to automate the recording of live streams on TikTok. The software is packaged as a standalone `.exe` executable for ease of use.
 
 ## Table of Contents
