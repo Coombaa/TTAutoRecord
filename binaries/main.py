@@ -165,16 +165,9 @@ def extract_username(url):
     username = parsed_url.path.split('/')[1]
     return username.replace("@", "")
 
-async def fetch_url(session, url, headers):
-    async with session.get(url, headers=headers, timeout=60) as response:
-        return await response.read()
-
-async def get_room_ids_async(urls):
+def get_room_ids(urls):
     room_and_users = []
     max_retries = 10
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.0.0 Safari/537',
-    }
     
     # Load ignored_users from the file and create if it doesnt exist
     ignored_users_path = os.path.join(os.getcwd(), 'config', 'lists', 'ignored_users.txt')
@@ -184,41 +177,37 @@ async def get_room_ids_async(urls):
     with open(ignored_users_path, 'r') as f:
         ignored_users = set(line.strip() for line in f.readlines())
     
-    async with aiohttp.ClientSession() as session:
-        for i in range(0, len(urls), 5):  # Fetch 5 URLs at a time
-            chunk = urls[i:i+5]
-            tasks = []
-            
-            for url in chunk:
-                if not url.startswith('http'):
-                    url = f"https://{url}"
-                
-                username = extract_username(url)
-                
-                # Skip if username is in ignored_users
-                if username in ignored_users:
-                    continue
-                
-                task = fetch_url(session, url, headers)
-                tasks.append((username, task))
-            
-            for username, task in tasks:
-                try:
-                    content = await task
-                except:
-                    print(Fore.RED + f"Failed to fetch {url}.")
-                    continue
-
-                matches = list(re.finditer(b"room_id=(\d+)", content))
-                if matches:
-                    longest_room_id = max([match.group(1).decode("utf-8") for match in matches], key=len)
-                    room_and_users.append((username, longest_room_id))
-
-            await asyncio.sleep(0.5)  # Introduce a 0.5-second delay between each batch
+    for url in urls:
+        if not url.startswith('http'):
+            url = f"https://{url}"
         
+        username = extract_username(url)
+        response = None  # Initialize response variable
+        
+        for i in range(max_retries):
+            try:
+                response = requests.get(url, timeout=60)
+                break  # Successful request, break the retry loop
+            except ChunkedEncodingError:
+                if i == max_retries - 1:
+                    print(f"Failed to fetch {url} after {max_retries} retries.")
+                    continue
+
+        # If after all retries, response is still None, skip this URL
+        if response is None:
+            print(f"Skipping {url} due to failed requests.")
+            continue
+
+        content = response.content
+        matches = list(re.finditer(b"room_id=(\d+)", content))
+        
+        if matches:
+            longest_room_id = max([match.group(1).decode("utf-8") for match in matches], key=len)
+            room_and_users.append((username, longest_room_id))
+    
     monitored_users_path = os.path.join(os.getcwd(), 'config', 'lists', 'monitored_users.txt')
     
-    # Writing room IDs and usernames to monitored_users.txt and overwriting each time
+    # Writing room IDs and usernames to room_ids.txt and overwriting each time
     with open(monitored_users_path, 'w') as f:
         for username, room_id in room_and_users:
             f.write(f"{username} = {room_id}\n")
@@ -231,9 +220,6 @@ def create_videos_dir():
     videos_dir = os.path.join(os.getcwd(), '../videos')
     if not os.path.exists(videos_dir):
         os.makedirs(videos_dir)
-
-def get_room_ids(urls):
-    return asyncio.run(get_room_ids_async(urls))
 
 
 print(r"""
