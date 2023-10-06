@@ -40,8 +40,6 @@ TTAutoRecord is a specialized utility designed to automate the recording of live
 ## Configuration Files
 
 - **config.toml**: The default settings are optimized for general use-cases, specifically for querying Webcast URLs. A rate of 10 URLs per second is generally sufficient for most users.
-  
-- **flv_users.txt**: For users experiencing issues with HLS streams, the software will automatically switch to FLV links after 10 unsuccessful attempts. To preemptively bypass the m3u8 validation for these users, include their usernames in this file. It is hoped that TikTok will resolve this issue in the near future.
 
 - **monitored_users.txt**: This file is autonomously updated by the application. Manual modifications are discouraged.
 
