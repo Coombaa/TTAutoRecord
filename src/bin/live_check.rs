@@ -10,8 +10,7 @@ use std::{
     time::Duration
 };
 use cookie::Cookie;
-use tokio::{time::sleep, sync::Semaphore};
-use regex::Regex;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
@@ -92,6 +91,7 @@ fn get_config_path(filename: &str) -> Result<PathBuf, Box<dyn Error + Send + Syn
 }
 
 async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let _ = cancel_token;
     #[allow(deprecated)]
     let following_div = client.wait_for_find(Locator::Css("div.tiktok-abirwa-DivSideNavChannel")).await?;
 
