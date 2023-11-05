@@ -21,7 +21,7 @@ static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like
 static FFMPEG_PATH: &str = "ffmpeg.exe";
 static LOCK_DIRECTORY: &str = "../lock_files";
 static RE_M3U8: Lazy<Regex> = Lazy::new(|| Regex::new("https://[^\"']+.m3u8").unwrap());
-static RE_FLV_UHD: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\_uhd.flv)""#).unwrap());
+static RE_FLV: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\.flv)""#).unwrap());
 static RE_USERNAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#""display_id":"([^"]+)""#).unwrap());
 
 enum FetchResult {
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 fn read_room_ids_from_file() -> Result<Vec<String>, Box<dyn Error>> {
-    let file = fs::File::open("./config/lists/monitored_users.txt")?;
+    let file = fs::File::open("./config/lists/room_ids.txt")?;
     let reader = BufReader::new(file);
     let room_ids: Vec<String> = reader.lines()
         .filter_map(Result::ok)
@@ -92,83 +92,63 @@ async fn clear_lock_files_directory() -> Result<(), Box<dyn std::error::Error>> 
 
 async fn fetch_room_info_and_extract(client: &Client, room_id: &str, state: Arc<Mutex<HashMap<String, String>>>) -> Result<FetchResult, Box<dyn Error>> {
     let _current_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    //println!("DEBUG {}: Starting fetch_room_info_and_extract for room_id: {}", current_time, room_id);
-    
     let url = format!("https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={}", room_id);
-    //println!("DEBUG {}: Fetching room info from URL: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), url);
-
     let response = timeout(Duration::from_secs(10), client.get(&url).send()).await??;
-
-    //println!("DEBUG {}: Received response with status: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), response.status());
-
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        //println!("DEBUG {}: Status is NOT_FOUND. Returning.", Local::now().format("%Y-%m-%d %H:%M:%S"));
         return Ok(FetchResult::NotFound);
     }
-
     let content = response.bytes().await?;
     let text: std::borrow::Cow<'_, str> = String::from_utf8_lossy(&content);
-
-    ////println!("DEBUG {}: Received content: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), text);
-
     let mut state = state.lock().await;
 
-    //println!("DEBUG {}: Locked state mutex", Local::now().format("%Y-%m-%d %H:%M:%S"));
-
-    if text.contains("\"status\":2") {
-        //println!("DEBUG {}: Found status: 2", Local::now().format("%Y-%m-%d %H:%M:%S"));
-        
-        if let Some(username_cap) = RE_USERNAME.captures(&text) {
-            let username = username_cap[1].to_string();
-            let m3u8_url = RE_M3U8.find(&text).map(|m| m.as_str().to_string());
-
-            //println!("DEBUG {}: Username: {}, M3U8 URL: {:?}", Local::now().format("%Y-%m-%d %H:%M:%S"), username, m3u8_url);
-
-            if let Some(stored_url_type) = state.get(room_id) {
-                if stored_url_type == "m3u8" && m3u8_url.is_some() {
-                    //println!("DEBUG {}: Returning M3U8 URL and username", Local::now().format("%Y-%m-%d %H:%M:%S"));
-                    return Ok(FetchResult::UrlAndUsername(m3u8_url.unwrap(), username));
+    async fn check_and_return_first_working_url(client: &Client, urls: Vec<String>) -> Option<String> {
+        for url in &urls {
+            let response = client.get(url).send().await;
+            if let Ok(response) = response {
+                if response.status().is_success() {
+                    let url_actual = response.url().to_string();
+                    return Some(url_actual);
                 }
             }
+        }
+        None
+    }
 
-            if m3u8_url.is_some() {
-                let m3u8 = m3u8_url.as_ref().unwrap();
-                let response = client.get(m3u8).send().await;
-
+    if text.contains("\"status\":2") {
+        if let Some(username_cap) = RE_USERNAME.captures(&text) {
+            let username = username_cap[1].to_string();
+            if let Some(m3u8_url) = RE_M3U8.find(&text).map(|m| m.as_str().to_string()) {
+                let response = client.get(&m3u8_url).send().await;
                 if let Ok(response) = response {
                     if response.status().is_success() {
                         state.insert(room_id.to_string(), "m3u8".to_string());
-                        //println!("DEBUG {}: Found M3U8 URL. Processing...", Local::now().format("%Y-%m-%d %H:%M:%S"));
-                        return Ok(FetchResult::UrlAndUsername(m3u8.clone(), username));
-                    }
-                }
-            } else {
-                let flv_urls: Vec<String> = RE_FLV_UHD.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
-                //println!("DEBUG {}: No M3U8 URL found. Checking FLV URLs...", Local::now().format("%Y-%m-%d %H:%M:%S"));
-
-                for flv_url in &flv_urls {
-                    let response = client.get(flv_url).send().await;
-
-                    if let Ok(response) = response {
-                        if response.status().is_success() {
-                            let flv_url_actual = response.url().to_string();
-                            state.insert(room_id.to_string(), "flv".to_string());
-                            //println!("DEBUG {}: Username: {}, FLV URL: {:?}", Local::now().format("%Y-%m-%d %H:%M:%S"), username, flv_url);
-                            return Ok(FetchResult::UrlAndUsername(flv_url_actual, username));
-                        }
+                        return Ok(FetchResult::UrlAndUsername(m3u8_url, username));
                     }
                 }
             }
+
+            let flv_urls: Vec<String> = RE_FLV.captures_iter(&text).map(|cap| cap[1].to_string()).collect();
+            let (uhd_flv_urls, flv_urls): (Vec<String>, Vec<String>) = flv_urls.into_iter().partition(|url| url.contains("_uhd.flv"));
+
+            if let Some(uhd_flv_url) = check_and_return_first_working_url(client, uhd_flv_urls).await {
+                state.insert(room_id.to_string(), "flv".to_string());
+                return Ok(FetchResult::UrlAndUsername(uhd_flv_url, username));
+            } else if let Some(flv_url) = check_and_return_first_working_url(client, flv_urls).await {
+                state.insert(room_id.to_string(), "flv".to_string());
+                return Ok(FetchResult::UrlAndUsername(flv_url, username));
+            } else {
+                return Ok(FetchResult::LiveEnded);
+            }
+            
         } else {
-            //println!("DEBUG {}: Username not found. Returning UsernameMissing.", Local::now().format("%Y-%m-%d %H:%M:%S"));
             return Ok(FetchResult::UsernameMissing);
         }
     } else {
-        // Live ended
+        return Ok(FetchResult::LiveEnded);
     }
-
-    Ok(FetchResult::LiveEnded)
 }
+
+
 
 fn extract_stream_id(url: &str) -> Option<String> {
     let re = Regex::new(r"stream-(\d+)_").unwrap();
