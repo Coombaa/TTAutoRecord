@@ -12,9 +12,13 @@ use cookie::Cookie;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
-use log::{info, debug};
+use log::{info, debug, error};
 use env_logger;
 use std::fmt;
+
+
+const MAX_RETRIES: usize = 3;
+const RETRY_DELAY: u64 = 5; // in seconds
 
 #[derive(Debug)]
 enum MyError {
@@ -82,7 +86,6 @@ async fn run() -> Result<(), MyError> {
     .ok_or("Failed to get the executable's directory")?
     .to_path_buf();
 
-    geckodriver_path.push("binaries");
     geckodriver_path.push("geckodriver.exe");
 
     debug!("Starting geckodriver...");
@@ -90,39 +93,32 @@ async fn run() -> Result<(), MyError> {
         .spawn()?;
 
     debug!("Entering main loop...");
+    
     loop {
         debug!("Creating new client...");
         let mut client = create_client().await?;
 
-        debug!("Entering inner loop...");
         loop {
             debug!("Getting live users...");
             match get_live_users(&mut client, Arc::new(CancellationToken::new())).await {
-                Ok(_) => {},
+                Ok(_) => debug!("Successfully fetched live users."),
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error fetching live users: {}", e);
                     if e.to_string().contains("InactiveActor") {
-                        debug!("InactiveActor error detected, breaking inner loop to create a new client...");
-                        break;
+                        debug!("InactiveActor error detected, disposing current client...");
+                        drop(client); // Explicitly drop the client
+                        debug!("Client dropped successfully.");
+                        break; // Exit the loop to create a new client
+                    } else {
+                        debug!("Error did not contain InactiveActor, continuing...");
                     }
                 }
             }
 
-            debug!("Refreshing client...");
-            match client.refresh().await {
-                Ok(_) => {},
-                Err(e) => {
-                    eprintln!("Failed to refresh: {}", e);
-                    if e.to_string().contains("InactiveActor") {
-                        debug!("InactiveActor error detected, breaking inner loop to create a new client...");
-                        break;
-                    }
-                }
-            }
-
-            debug!("Sleeping for 10 seconds...");
+            debug!("Sleeping for 10 seconds before next iteration...");
             sleep(Duration::from_secs(10)).await;
         }
+        debug!("Exiting inner loop, proceeding to create a new client...");
     }
 }
 
@@ -211,65 +207,63 @@ async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken
     debug!("Waiting for following div...");
     let _ = cancel_token;
 
-    match timeout(Duration::from_secs(5), client.wait().for_element(Locator::Css("div.tiktok-abirwa-DivSideNavChannel"))).await {
-        Ok(Ok(following_div)) => {
-            debug!("Following div found.");
+    for attempt in 0..MAX_RETRIES {
+        match timeout(Duration::from_secs(5), client.wait().for_element(Locator::Css("div.tiktok-abirwa-DivSideNavChannel"))).await {
+            Ok(Ok(following_div)) => {
+                debug!("Following div found.");
 
-            debug!("Finding live-side-more-button...");
-            match client.find(Locator::Css("div[data-e2e='live-side-more-button']")).await {
-                Ok(btn) => {
+                debug!("Finding live-side-more-button...");
+                if let Ok(btn) = client.find(Locator::Css("div[data-e2e='live-side-more-button']")).await {
                     btn.click().await.map_err(MyError::CmdError)?;
                 }
-                Err(_) => {}
-            }
 
-            debug!("Finding all a elements...");
-            let a_elements = following_div.find_all(Locator::Css("a")).await.map_err(MyError::CmdError)?;
-            let mut usernames = Vec::new();
-            for a in a_elements {
-                debug!("Finding username span...");
-                match timeout(Duration::from_secs(5), a.find(Locator::Css("span[data-e2e='live-side-nav-name']"))).await {
-                    Ok(Ok(span)) => {
-                        let username = span.text().await.map_err(MyError::CmdError)?;
+                debug!("Finding all a elements...");
+                let a_elements = following_div.find_all(Locator::Css("a")).await.map_err(MyError::CmdError)?;
+                let mut usernames = Vec::new();
+
+                for a in a_elements {
+                    debug!("Finding username span...");
+                    if let Ok(span) = timeout(Duration::from_secs(5), a.find(Locator::Css("span[data-e2e='live-side-nav-name']"))).await {
+                        let username = span?.text().await.map_err(MyError::CmdError)?;
                         usernames.push(username);
-                    },
-                    Ok(Err(e)) => {
-                        eprintln!("Error while finding username span: {:?}", e);
-                    },
-                    Err(_) => {
-                        eprintln!("Timeout elapsed while finding username span");
                     }
                 }
+
+                debug!("Ensuring config/lists directory exists...");
+                let mut file_path = get_config_path("lists")?;
+                fs::create_dir_all(&file_path)?;
+
+                debug!("Opening live_urls.txt for writing...");
+                file_path.push("live_urls.txt");
+                let file = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(file_path)?;
+
+                debug!("Writing usernames to live_urls.txt...");
+                let mut writer = io::BufWriter::new(file);
+                for username in usernames {
+                    writeln!(writer, "https://www.tiktok.com/@{}/live", username)?;
+                }
+
+                return Ok(());
             }
-
-            debug!("Ensuring config/lists directory exists...");
-            let mut file_path = get_config_path("lists")?;
-            fs::create_dir_all(&file_path)?;
-
-            debug!("Opening live_urls.txt for writing...");
-            file_path.push("live_urls.txt");
-            let file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(file_path)?;
-
-            debug!("Writing usernames to live_urls.txt...");
-            let mut writer = io::BufWriter::new(file);
-            for username in usernames {
-                writeln!(writer, "https://www.tiktok.com/@{}/live", username)?;
+            Ok(Err(e)) => {
+                error!("Attempt {}: Error while waiting for following div: {:?}", attempt + 1, e);
             }
-
-            Ok(())
+            Err(_) => {
+                error!("Attempt {}: Timeout elapsed while waiting for following div", attempt + 1);
+            }
         }
-        Ok(Err(e)) => {
-            eprintln!("Error while waiting for following div: {:?}", e);
-            Err(MyError::CmdError(e))
-        }
-        Err(_) => {
-            debug!("Timeout elapsed while waiting for following div, refreshing the page...");
-            client.refresh().await.map_err(MyError::CmdError)?;
-            Err(MyError::StrError("Timeout elapsed while waiting for following div".to_string()))
+        if attempt < MAX_RETRIES - 1 {
+            debug!("Retrying in {} seconds...", RETRY_DELAY);
+            sleep(Duration::from_secs(RETRY_DELAY)).await;
         }
     }
+
+    debug!("Maximum attempts reached. Refreshing client...");
+    client.refresh().await.map_err(MyError::CmdError)?;
+    Err(MyError::StrError("Maximum attempts reached while waiting for following div".to_string()))
 }
+

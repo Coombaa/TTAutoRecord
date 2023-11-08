@@ -56,7 +56,7 @@ async fn read_lives_from_file(file_path: &str) -> Result<Vec<String>, Box<dyn Er
 
 async fn fetch_live_page(_client: &Client, url: &str, proxy: &str, config_data: &ConfigData) -> Result<Option<(String, String)>, Box<dyn Error + Send + Sync>> {
     let username_regex = Regex::new(r"@([a-zA-Z0-9_]+)").expect("Failed to create username regex");
-    let room_id_regex = Regex::new(r"stream-(\d+)_").expect("Failed to create room ID regex");
+    let room_id_regex = Regex::new(r"room_id=(\d+)").expect("Failed to create room ID regex");
 
     for retry in 0..RETRIES {
         //println!("Debug: Attempt {} for URL: {}", retry + 1, url);
@@ -136,7 +136,7 @@ async fn fetch_live_page(_client: &Client, url: &str, proxy: &str, config_data: 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut config = Config::default();
-    config.merge(ConfigFile::with_name("./config/config.toml"))?;
+    config.merge(ConfigFile::with_name("../config/config.toml"))?;
 
     let config_data: ConfigData = config.try_into()?;
 
@@ -150,8 +150,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     loop {
         let start_time = Instant::now();
-        let proxies = read_lives_from_file("./config/lists/proxies.txt").await?;
-        let urls = read_lives_from_file("./config/lists/live_urls.txt").await?;
+        let proxies = read_lives_from_file("../config/lists/proxies.txt").await?;
+        let urls = read_lives_from_file("../config/lists/live_urls.txt").await?;
         
         let url_stream = stream::iter(urls);
 
@@ -172,7 +172,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             .collect()
             .await;
 
-        let mut monitored_users_file = OpenOptions::new().write(true).truncate(true).open("./config/lists/room_ids.txt")?;
+        let mut monitored_users_file = OpenOptions::new().write(true).truncate(true).open("../config/lists/room_ids.txt")?;
 
         for entry in extracted_data.iter() {
             if let Some((username, room_id)) = entry {
