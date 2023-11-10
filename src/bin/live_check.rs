@@ -205,6 +205,7 @@ fn get_config_path(filename: &str) -> Result<PathBuf, MyError> {
 
 async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken>) -> Result<(), MyError> {
     debug!("Waiting for following div...");
+    sleep(Duration::from_secs(2)).await;
     let _ = cancel_token;
 
     for attempt in 0..MAX_RETRIES {
@@ -246,6 +247,8 @@ async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken
                 for username in usernames {
                     writeln!(writer, "https://www.tiktok.com/@{}/live", username)?;
                 }
+
+                client.refresh().await.map_err(MyError::CmdError)?;
 
                 return Ok(());
             }

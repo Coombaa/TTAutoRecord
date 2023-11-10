@@ -187,7 +187,7 @@ async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mute
                     let file_name = entry.file_name();
                     let file_name_str = file_name.to_str().unwrap();
                     if !file_name_str.contains(&stream_id) {
-                        tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
+                      //  tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
                     }
                 }
             }
@@ -205,7 +205,7 @@ async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mute
                     let duration_since_modified = SystemTime::now().duration_since(modified_time).expect("Time went backwards");
                     
                     if duration_since_modified > Duration::from_secs(12 * 3600) || !file_name_str.contains(&stream_id) {
-                        tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
+                        //tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
                     }
                 }
             }
