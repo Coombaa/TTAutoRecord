@@ -211,6 +211,12 @@ async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken
     for attempt in 0..MAX_RETRIES {
         match timeout(Duration::from_secs(5), client.wait().for_element(Locator::Css("div.tiktok-abirwa-DivSideNavChannel"))).await {
             Ok(Ok(following_div)) => {
+                // Check if the div contains the text 'Following'
+                let title = following_div.find(Locator::Css("div[data-e2e='live-side-nav-channel-title']")).await.map_err(MyError::CmdError)?;
+                if title.text().await.map_err(MyError::CmdError)? != "Following" {
+                    continue;
+                }
+
                 debug!("Following div found.");
 
                 debug!("Finding live-side-more-button...");
@@ -269,4 +275,3 @@ async fn get_live_users(client: &mut Client, cancel_token: Arc<CancellationToken
     client.refresh().await.map_err(MyError::CmdError)?;
     Err(MyError::StrError("Maximum attempts reached while waiting for following div".to_string()))
 }
-
