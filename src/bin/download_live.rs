@@ -20,8 +20,9 @@ use std::fs::metadata;
 static IPHONE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1";
 static FFMPEG_PATH: &str = "ffmpeg.exe";
 static LOCK_DIRECTORY: &str = "../lock_files";
-static RE_M3U8: Lazy<Regex> = Lazy::new(|| Regex::new("https://[^\"']+.m3u8").unwrap());
-static RE_FLV: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\.flv)""#).unwrap());
+static RE_M3U8: Lazy<Regex> = Lazy::new(|| Regex::new("https://[^'\"]+\\.m3u8(?:\\?.*)?").unwrap());
+static RE_FLV: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+\.flv(?:\?.*)?)"#).unwrap());
+
 static RE_USERNAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#""display_id":"([^"]+)""#).unwrap());
 
 enum FetchResult {
@@ -180,35 +181,6 @@ async fn download_video(client: &reqwest::Client, room_id: &str, state: Arc<Mute
 
             //println!("{}: {} is live", Local::now().format("%Y-%m-%d %H:%M:%S"), username);
 
-            // Before downloading, delete other segments not related to the current stream ID
-            let mut dir = tokio::fs::read_dir(&video_folder).await.expect("Failed to read video folder");
-            while let Some(entry) = dir.next_entry().await.expect("Failed to read video folder") {
-                if entry.path().is_file() {
-                    let file_name = entry.file_name();
-                    let file_name_str = file_name.to_str().unwrap();
-                    if !file_name_str.contains(&stream_id) {
-                      //  tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
-                    }
-                }
-            }
-
-            // Before downloading, delete other segments not related to the current stream ID
-            let mut dir = tokio::fs::read_dir(&video_folder).await.expect("Failed to read video folder");
-            while let Some(entry) = dir.next_entry().await.expect("Failed to read video folder") {
-                if entry.path().is_file() {
-                    let file_name = entry.file_name();
-                    let file_name_str = file_name.to_str().unwrap();
-                    
-                    // Check if the file is more than 12 hours old
-                    let metadata = metadata(entry.path()).expect("Failed to read metadata");
-                    let modified_time = metadata.modified().expect("Failed to get modified time");
-                    let duration_since_modified = SystemTime::now().duration_since(modified_time).expect("Time went backwards");
-                    
-                    if duration_since_modified > Duration::from_secs(12 * 3600) || !file_name_str.contains(&stream_id) {
-                        //tokio::fs::remove_file(entry.path()).await.expect("Failed to delete file");
-                    }
-                }
-            }
 
             //download video
             tokio::spawn(async move {
