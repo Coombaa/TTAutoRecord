@@ -19,14 +19,13 @@ BINARIES_DIR = os.path.join(BASE_DIR, 'binaries')
 LOCK_FILES_DIR = os.path.join(BASE_DIR, 'lock_files')
 SEGMENTS_DIR = os.path.join(BASE_DIR, 'segments')
 VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
-STREAM_LINKS_DIR = os.path.join(BASE_DIR, 'stream_links')
 
 # Ensure directories exist
 os.makedirs(LOCK_FILES_DIR, exist_ok=True)
 os.makedirs(SEGMENTS_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 os.makedirs(BINARIES_DIR, exist_ok=True) 
-os.makedirs(STREAM_LINKS_DIR, exist_ok=True) 
+
 
 def disable_quickedit():
     if not os.name == 'posix':

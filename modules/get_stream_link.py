@@ -8,6 +8,9 @@ from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
 from pathlib import Path
+from modules.SharedDataStore import shared_stream_links_store
+
+
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,7 +24,6 @@ class StreamLink:
 # Adjusted to use the parent directory of the current script's directory
 script_dir = Path(__file__).parent.parent
 json_dir = script_dir / 'json'
-stream_links_dir = script_dir / 'stream_links'
 lock_files_dir = script_dir / 'lock_files'
 binaries_dir = script_dir / 'binaries'
 
@@ -67,12 +69,6 @@ def load_force_flv_users():
         data = json.load(file)
     return data.get("force_flv_users", [])
 
-def save_stream_link(username, stream_link):
-    os.makedirs(stream_links_dir, exist_ok=True)
-    filename = stream_links_dir / f"{username}_stream_link.txt"
-    with open(filename, 'w') as file:
-        file.write(stream_link)
-
 def start_browser():
     logging.info("Starting browser..")
     geckodriver_path = binaries_dir / "geckodriver.exe"    
@@ -117,11 +113,12 @@ def read_stream_links(path=json_dir / "live_users.json"):
 
 
 def clear_old_stream_links(active_usernames):
-    for filename in os.listdir(stream_links_dir):
-        username = filename.replace('_stream_link.txt', '')
+    all_usernames = list(shared_stream_links_store.data.keys())
+    for username in all_usernames:
         if username not in active_usernames:
-            os.remove(stream_links_dir / filename)
-            logging.info(f"Removed stream link file for inactive user: {username}")
+            shared_stream_links_store.remove_value(username)
+            logging.info(f"Removed stream link for inactive user: {username}")
+
 
 def process_user(driver, user, force_flv_users):
     lock_file_path = lock_files_dir / f"{user.username}.lock"
@@ -144,7 +141,7 @@ def process_user(driver, user, force_flv_users):
             stream_link = find_stream_link(page_source, user.username, force_flv_users)
             if stream_link:
                 logging.info(f"Found stream link for {user.username}: {stream_link}")
-                save_stream_link(user.username, stream_link)
+                shared_stream_links_store.set_value(user.username, stream_link)
             else:
                 logging.info(f"No stream link found for {user.username}")
         else:
@@ -153,6 +150,7 @@ def process_user(driver, user, force_flv_users):
         logging.error(f"Error processing {user.username}: {e}")
     finally:
         logging.info(f"Finished processing user: {user.username}")
+
 
 
 def main():

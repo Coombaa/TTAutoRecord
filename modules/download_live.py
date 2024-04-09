@@ -6,6 +6,8 @@ import datetime
 import re
 import logging
 import shutil
+from modules.SharedDataStore import shared_stream_links_store
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -15,21 +17,13 @@ FFMPEG_BIN_PATH = os.path.join(BINARIES_DIR, 'ffmpeg.exe')
 LOCK_FILES_DIR = os.path.join(BASE_DIR, 'lock_files')
 SEGMENTS_DIR = os.path.join(BASE_DIR, 'segments')
 VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
-STREAM_LINKS_DIR = os.path.join(BASE_DIR, 'stream_links')
 
 for lock_file in os.listdir(LOCK_FILES_DIR):
     os.remove(os.path.join(LOCK_FILES_DIR, lock_file))
 
 def get_stream_links():
-    stream_links = []
-    for filename in os.listdir(STREAM_LINKS_DIR):
-        if filename.endswith("_stream_link.txt"):
-            username = filename[:-16]
-            filepath = os.path.join(STREAM_LINKS_DIR, filename)
-            with open(filepath, 'r') as file:
-                stream_link = file.read().strip()
-                stream_links.append((username, stream_link))
-    return stream_links
+    return [(username, shared_stream_links_store.get_value(username)) for username in shared_stream_links_store.data]
+
 
 def extract_stream_id(url):
     match = re.search(r'stream-(\d+)_', url)
@@ -57,7 +51,7 @@ def concatenate_segments(username, stream_id):
             FFMPEG_BIN_PATH, '-f', 'concat', '-safe', '0',
             '-i', list_file_path, '-c', 'copy', '-y', output_file
         ]
-        subprocess.run(ffmpeg_cmd, check=True)
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         logging.info(f"Concatenation completed for {username} with stream ID {stream_id}")
     else:
         logging.info(f"No segments found for {username} with stream ID {stream_id}, nothing to concatenate or copy.")
@@ -81,7 +75,7 @@ def download_livestream(username, stream_link):
     try:
         with open(lock_file_path, 'w') as lock_file:
             lock_file.write('')
-        subprocess.run(ffmpeg_cmd, check=True)
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         logging.info(f"Download completed for {username}.")
     except subprocess.CalledProcessError as e:
         logging.error(f"FFmpeg process error for {username}: {e}")
@@ -100,7 +94,7 @@ def main():
             logging.info(f"Found {len(stream_links)} stream links.")
 
             for username, stream_link in stream_links:
-                if not os.path.exists(os.path.join(LOCK_FILES_DIR, f'{username}.lock')):
+                if stream_link and not os.path.exists(os.path.join(LOCK_FILES_DIR, f'{username}.lock')):
                     executor.submit(download_livestream, username, stream_link)
 
             time.sleep(3)
