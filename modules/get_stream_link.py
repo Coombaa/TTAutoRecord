@@ -147,7 +147,7 @@ def process_user(driver, user, force_flv_users):
             room_id = find_room_id(page_source)
             if room_id:
                 webcast_url = f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
-                driver.get(webcast_url)  # Note: No 'view-source:' prefix this time
+                driver.get(f"view-source:{webcast_url}")
                 page_source = driver.page_source
                 stream_link = find_stream_link(page_source, user.username, force_flv_users)
                 if stream_link:
