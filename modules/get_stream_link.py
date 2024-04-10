@@ -105,7 +105,7 @@ def read_stream_links(path=json_dir / "live_users.json"):
     try:
         with open(path, "r") as file:
             data = json.load(file)
-        logging.info(f"Read {len(data)} entries from {path}.")
+        logging.info(f"{len(data)} Users are currently live.")
         return [StreamLink(**item) for item in data]
     except json.JSONDecodeError:
         logging.error(f"Empty or invalid JSON in {path}.")
@@ -123,34 +123,41 @@ def clear_old_stream_links(active_usernames):
 def process_user(driver, user, force_flv_users):
     lock_file_path = lock_files_dir / f"{user.username}.lock"
     if lock_file_path.exists():
-        logging.info(f"Lock file exists for {user.username}, skipping.")
         return
 
-    logging.info(f"Attempting to process user: {user.username}")
     try:
         driver.get(f"view-source:{user.stream_link}")
         page_source = driver.page_source
         room_id = find_room_id(page_source)
-        
-        logging.info(f"Found Room ID for {user.username}: {room_id}")
-        
+                
         if room_id:
             webcast_url = f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
             driver.get(f"view-source:{webcast_url}")
             page_source = driver.page_source
             stream_link = find_stream_link(page_source, user.username, force_flv_users)
             if stream_link:
-                logging.info(f"Found stream link for {user.username}: {stream_link}")
                 shared_stream_links_store.set_value(user.username, stream_link)
             else:
                 logging.info(f"No stream link found for {user.username}")
         else:
-            logging.info(f"No room ID found for {user.username}")
+            logging.info(f"No room ID found for {user.username}. Passing firewall challenge...")
+            driver.get(user.stream_link)  # Retrying without 'view-source:' prefix
+            time.sleep(3)  # Wait for JavaScript execution
+            page_source = driver.page_source
+            room_id = find_room_id(page_source)
+            if room_id:
+                webcast_url = f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
+                driver.get(webcast_url)  # Note: No 'view-source:' prefix this time
+                page_source = driver.page_source
+                stream_link = find_stream_link(page_source, user.username, force_flv_users)
+                if stream_link:
+                    shared_stream_links_store.set_value(user.username, stream_link)
+                else:
+                    logging.info(f"No stream link found for {user.username} after retry.")
+            else:
+                logging.info(f"No room ID found for {user.username} after retry.")
     except Exception as e:
         logging.error(f"Error processing {user.username}: {e}")
-    finally:
-        logging.info(f"Finished processing user: {user.username}")
-
 
 
 def main():
@@ -170,7 +177,6 @@ def main():
             logging.info("No active stream links found.")
         
         clear_old_stream_links(set(active_usernames))
-        logging.info("Cycle complete. Sleeping for 5 seconds before next check.")
         time.sleep(5)
 
 

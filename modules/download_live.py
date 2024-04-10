@@ -38,7 +38,6 @@ def concatenate_segments(username, stream_id):
         single_segment_path = os.path.join(user_segment_dir, segments[0])
         output_file = os.path.join(VIDEOS_DIR, f"{username}_{stream_id}_{current_date}.mp4")
         shutil.copy(single_segment_path, output_file)
-        logging.info(f"Copied single segment for {username} with stream ID {stream_id}")
     elif len(segments) > 1:
         list_file_path = os.path.join(user_segment_dir, f"{stream_id}_list.txt")
         with open(list_file_path, 'w') as list_file:
@@ -52,7 +51,6 @@ def concatenate_segments(username, stream_id):
             '-i', list_file_path, '-c', 'copy', '-y', output_file
         ]
         subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        logging.info(f"Concatenation completed for {username} with stream ID {stream_id}")
     else:
         logging.info(f"No segments found for {username} with stream ID {stream_id}, nothing to concatenate or copy.")
 
@@ -79,19 +77,18 @@ def download_livestream(username, stream_link):
         if os.path.exists(lock_file_path):
             concatenate_segments(username, stream_id)
             os.remove(lock_file_path)
-            logging.info(f"Lock file removed and concatenation attempted for {username}.")
 
 
 def main():
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
-            logging.info("Checking for new stream links")
             stream_links = get_stream_links()
             logging.info(f"Found {len(stream_links)} stream links.")
 
             for username, stream_link in stream_links:
                 if stream_link and not os.path.exists(os.path.join(LOCK_FILES_DIR, f'{username}.lock')):
                     executor.submit(download_livestream, username, stream_link)
+
 
             time.sleep(3)
 
