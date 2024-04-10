@@ -65,7 +65,7 @@ def set_image(index, img, canvas):
 
 
 def create_red_square(canvas, root, x, y):
-    size = 15
+    size = 8
     square_id = canvas.create_rectangle(x - size//2, y - size//2, x + size//2, y + size//2, fill="red", outline="red")
     return square_id
 
@@ -112,7 +112,7 @@ def update_gui(canvas, root, currently_live_label):
             # Use a lambda to correctly pass the index and img to set_image function
             load_image_from_url_async(user['profile_picture'], lambda img, index=index: set_image(index, img, canvas), root)
         if lock_file_exists(user.get('username', '')):
-            text_x = canvas.winfo_width() - 60
+            text_x = canvas.winfo_width() - 35
             square_x = canvas.winfo_width() - 20
             canvas.create_text(text_x, y_position + 35, text="Recording", anchor="e", font=recording_font, fill="white")
             create_red_square(canvas, root, square_x, y_position + 35)
@@ -137,7 +137,7 @@ def run_gui():
 
     # Create and pack the label inside the frame
     currently_live_label = ctk.CTkLabel(top_frame, text="Currently Recording: 0/0", fg_color="black", bg_color="black", font=("Helvetica", 18, "bold"), anchor="w")
-    currently_live_label.pack(side="left", anchor="nw" , padx=10, pady=10)
+    currently_live_label.pack(side="left", anchor="nw" , padx=10, pady=1)
     
     scrollbar = ctk.CTkScrollbar(root, command=canvas.yview, fg_color="gray", bg_color="black")
     canvas.configure(yscrollcommand=scrollbar.set)
