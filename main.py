@@ -54,11 +54,11 @@ if __name__ == "__main__":
     user_check_thread = threading.Thread(target=user_check_main)
     
     # Start the threads
+    user_check_thread.start()
+    time.sleep(15)
     download_live_thread.start()
     get_stream_link_thread.start()
-    time.sleep(15)
-    user_check_thread.start()
-
+    
     # Only start GUI thread if --nogui is not specified
     if not args.nogui:
         gui_thread = threading.Thread(target=gui_main)
