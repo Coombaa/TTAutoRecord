@@ -19,7 +19,7 @@ TTAutoRecord is a specialized utility designed to automate the recording of live
 3. Install required modules:
 
 ```bash
-  pip install -r requirements. txt
+  pip install -r requirements.txt
 ```
 
 3. Install the [EditThisCookie](https://chrome.google.com/webstore/detail/editthiscookie/fngmhnnpilhplaeedifhccceomclgfbg)  Chrome browser extension.
