@@ -67,8 +67,6 @@ def download_livestream(username, stream_link):
 
     ffmpeg_cmd = [
         FFMPEG_BIN_PATH, '-i', stream_link,
-        '-reconnect', '1', '-reconnect_at_eof', '1',
-        '-reconnect_streamed', '1', '-reconnect_delay_max', '1', '-timeout', '30000000',
         '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-y', segment_path
     ]
 
@@ -77,8 +75,6 @@ def download_livestream(username, stream_link):
             lock_file.write('')
         subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         logging.info(f"Download completed for {username}.")
-    except subprocess.CalledProcessError as e:
-        logging.error(f"FFmpeg process error for {username}: {e}")
     finally:
         if os.path.exists(lock_file_path):
             concatenate_segments(username, stream_id)

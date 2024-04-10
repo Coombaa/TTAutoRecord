@@ -1,6 +1,7 @@
 import os
 import threading
 import argparse
+import time
 from modules.download_live import main as download_live_main
 from modules.get_stream_link import main as get_stream_link_main
 from modules.user_check import main as user_check_main
@@ -55,6 +56,7 @@ if __name__ == "__main__":
     # Start the threads
     download_live_thread.start()
     get_stream_link_thread.start()
+    time.sleep(15)
     user_check_thread.start()
 
     # Only start GUI thread if --nogui is not specified
