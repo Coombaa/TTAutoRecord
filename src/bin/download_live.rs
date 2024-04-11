@@ -81,50 +81,47 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
         .filter(|path| path.is_file() && path.display().to_string().contains(stream_id) && path.extension().unwrap_or_default() == "mp4")
         .collect::<Vec<_>>();
 
-    if paths.len() == 1 {
-        println!("Copying {}'s video with stream id {} to the videos folder.", username, stream_id);
-        let datetime = Local::now().format("%Y-%m-%d").to_string();
-        let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
-        fs::copy(&paths[0], &output_path)?;
-    } else if paths.len() > 1 {
+    if paths.len() > 0 {
         let concat_file_path = format!("{}/{}_{}_concat.txt", user_segment_dir, username, stream_id);
         let mut concat_file = File::create(&concat_file_path)?;
 
-        println!("Concatenating {}'s videos with stream id {} to the videos folder.", username, stream_id);
+        println!("Creating concatenation file for {}'s videos with stream id {}.", username, stream_id);
 
         for path in &paths {
             writeln!(concat_file, "file '{}'", path.canonicalize()?.display().to_string().replace('\\', "/"))?;
         }
 
-        let datetime = Local::now().format("%Y-%m-%d").to_string();
-        let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
-        let status = Command::new(ffmpeg_path)
-            .arg("-f")
-            .arg("concat")
-            .arg("-safe")
-            .arg("0")
-            .arg("-i")
-            .arg(&concat_file_path)
-            .arg("-c")
-            .arg("copy")
-            .arg("-y")
-            .arg(&output_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
+        if paths.len() > 1 {
+            let datetime = Local::now().format("%Y-%m-%d").to_string();
+            let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
+            let status = Command::new(ffmpeg_path)
+                .arg("-f")
+                .arg("concat")
+                .arg("-safe")
+                .arg("0")
+                .arg("-i")
+                .arg(&concat_file_path)
+                .arg("-c")
+                .arg("copy")
+                .arg("-y")
+                .arg(&output_path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
 
-        if status.success() {
-            // Cleanup individual segments if concatenation was successful
-            for path in paths {
-                fs::remove_file(path)?;
+            if !status.success() {
+                println!("Error concatenating videos for user {} with stream id {}", username, stream_id);
             }
+        } else {
+            println!("Only one segment present, no concatenation needed for user {} with stream id {}", username, stream_id);
         }
     } else {
-        println!("No valid segments found for concatenation for user {} with stream id {}", username, stream_id);
+        println!("No valid segments found for user {} with stream id {}", username, stream_id);
     }
 
     Ok(())
 }
+
 
 
 fn current_exe_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
