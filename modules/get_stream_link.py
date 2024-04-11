@@ -70,7 +70,6 @@ def load_force_flv_users():
     return data.get("force_flv_users", [])
 
 def start_browser():
-    logging.info("Starting browser..")
     geckodriver_path = binaries_dir / "geckodriver.exe"    
     firefox_binary_path = 'C:/Program Files/Mozilla Firefox/firefox.exe'
     options = Options()
@@ -86,7 +85,6 @@ def start_browser():
 
 def auth(driver):
     time.sleep(2)
-    logging.info("Authenticating..")
     driver.get("https://www.tiktok.com")
     cookies_path = json_dir / 'cookies.json'
     if os.path.getsize(cookies_path) <= 0:
@@ -105,7 +103,6 @@ def read_stream_links(path=json_dir / "live_users.json"):
     try:
         with open(path, "r") as file:
             data = json.load(file)
-        logging.info(f"{len(data)} Users are currently live.")
         return [StreamLink(**item) for item in data]
     except json.JSONDecodeError:
         logging.error(f"Empty or invalid JSON in {path}.")

@@ -16,16 +16,15 @@ args = parser.parse_args()
 
 # Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BINARIES_DIR = os.path.join(BASE_DIR, 'binaries')
 LOCK_FILES_DIR = os.path.join(BASE_DIR, 'lock_files')
 SEGMENTS_DIR = os.path.join(BASE_DIR, 'segments')
 VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
 
-# Ensure directories exist
-os.makedirs(LOCK_FILES_DIR, exist_ok=True)
-os.makedirs(SEGMENTS_DIR, exist_ok=True)
-os.makedirs(VIDEOS_DIR, exist_ok=True)
-os.makedirs(BINARIES_DIR, exist_ok=True) 
+def create_folders():
+    # Ensure directories exist
+    os.makedirs(LOCK_FILES_DIR, exist_ok=True)
+    os.makedirs(SEGMENTS_DIR, exist_ok=True)
+    os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 
 def disable_quickedit():
@@ -47,6 +46,7 @@ def disable_quickedit():
 if __name__ == "__main__":
     
     disable_quickedit()
+    create_folders()
     
     # Create threads for each module's main function
     download_live_thread = threading.Thread(target=download_live_main)
