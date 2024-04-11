@@ -16,6 +16,17 @@ static LOCK_FILES_DIR: &str = "../lock_files";
 static SEGMENTS_DIR: &str = "../segments";
 static VIDEOS_DIR: &str = "../videos";
 
+async fn clear_lock_files(directory: &str) -> std::io::Result<()> {
+    let paths = fs::read_dir(directory)?;
+    for path in paths {
+        let path = path?.path();
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("lock") {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
 async fn read_stream_links() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut contents = String::new();
     File::open(STREAM_LINKS_JSON_PATH)?.read_to_string(&mut contents)?;
@@ -125,6 +136,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lock_files_dir = "../lock_files";
     let segments_dir = "../segments";
     let videos_dir = "../videos";
+
+    // Clear .lock files from lock_files directory
+    if let Err(e) = clear_lock_files(lock_files_dir).await {
+        eprintln!("Failed to clear lock files: {}", e);
+    }
 
     fs::create_dir_all(lock_files_dir)?;
     fs::create_dir_all(segments_dir)?;
