@@ -42,6 +42,12 @@ def disable_quickedit():
             print('Cannot disable QuickEdit mode! ' + str(e))
             print('.. As a consequence the script might be automatically\
             paused on Windows terminal, please disable it manually!')
+            
+def clear_lock_files():
+    # Remove all .lock files in the lock_files directory
+    for file in os.listdir(LOCK_FILES_DIR):
+        if file.endswith(".lock"):
+            os.remove(os.path.join(LOCK_FILES_DIR, file))
 
 def run_downloader():
     # Execute the download_live.exe within its directory
@@ -52,21 +58,23 @@ if __name__ == "__main__":
     
     disable_quickedit()
     create_folders()
+    clear_lock_files()
     
     # Create threads for each module's main function
     get_stream_link_thread = threading.Thread(target=get_stream_link_main)
     user_check_thread = threading.Thread(target=user_check_main)
+
+    # Only start GUI thread if --nogui is not specified
+    if not args.nogui:
+        gui_thread = threading.Thread(target=gui_main)
+        gui_thread.start()
     
     # Start the threads
     user_check_thread.start()
     time.sleep(15)
     get_stream_link_thread.start()
     run_downloader()
-    
-    # Only start GUI thread if --nogui is not specified
-    if not args.nogui:
-        gui_thread = threading.Thread(target=gui_main)
-        gui_thread.start()
+
 
     # Wait for all threads to finish
     get_stream_link_thread.join()
