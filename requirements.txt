@@ -1,3 +1,5 @@
 selenium
-aiohttp
+requests
 colorama
+customtkinter
+Pillow
