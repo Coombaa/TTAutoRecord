@@ -1,0 +1,5 @@
+/lock_files/*
+/videos/*
+/segments/*
+/modules/__pycache__
+geckodriver.log
