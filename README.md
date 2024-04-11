@@ -18,7 +18,7 @@ TTAutoRecord is a specialized utility designed to automate the recording of live
 - SSD - Recommended to keep things running smoothly, of course you can offload recordings to a hard drive for storage.
 - 50Mbps FTTC/FTTP internet connection recommended.
 
-If you can, I would suggest having a PC/Server dedicated to running this. I have done my best to minimise the amount of requests to TikTok, however their webpages are incredibly demanding to render so it may cause other applications to lag.
+If you can, I would suggest having a PC/Server dedicated to running this. I have done my best to minimize the amount of requests to TikTok, however their webpages are incredibly demanding to render so it may cause other applications to lag.
 
 ## Prerequisites
 
