@@ -36,7 +36,7 @@ If you can, I would suggest having a PC/Server dedicated to running this. I have
 ## Setup
 1. Set your TikTok language to **English** if it isn't already.
 
-2. Download and extract the requried files **Here**
+2. Download and extract the requried files [here](https://github.com/Coombaa/TTAutoRecord/releases/download/v4.1.2/TTAutoRecord-4.1.2.zip)
 
 3. **Authenticate on TikTok**
    - Access [TikTok Live](https://www.tiktok.com/live) via your web browser and authenticate your account.
