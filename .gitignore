@@ -3,3 +3,6 @@
 /segments/*
 /modules/__pycache__
 geckodriver.log
+cargo.lock
+cargo.toml
+/target/

@@ -8,20 +8,17 @@ from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
 from pathlib import Path
-from modules.SharedDataStore import shared_stream_links_store
-
 
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class StreamLink:
-    def __init__(self, username, stream_link, profile_picture):
+    def __init__(self, username, stream_link, profile_picture=None):
         self.username = username
         self.stream_link = stream_link
         self.profile_picture = profile_picture
 
-# Adjusted to use the parent directory of the current script's directory
 script_dir = Path(__file__).parent.parent
 json_dir = script_dir / 'json'
 lock_files_dir = script_dir / 'lock_files'
@@ -31,6 +28,27 @@ def load_cookies():
     with open(json_dir / "cookies.json", "r") as file:
         cookies = json.load(file)
     return cookies
+
+def write_stream_links_to_file(username, stream_link):
+    stream_links_path = json_dir / "stream_links.json"
+    try:
+        data = {}  # Initialize an empty dictionary to hold stream links
+        # Check if the file exists and is not empty before attempting to read
+        if stream_links_path.exists() and os.path.getsize(stream_links_path) > 0:
+            with open(stream_links_path, "r") as file:
+                try:
+                    data = json.load(file)
+                except json.JSONDecodeError:
+                    logging.error("Invalid JSON content detected. Creating a new stream links file.")
+                    # If the file contains invalid JSON, proceed with an empty dictionary
+        # Update or add the stream link
+        data[username] = stream_link
+        # Always write back to the file, creating it if necessary
+        with open(stream_links_path, "w") as file:
+            json.dump(data, file, indent=4)
+    except Exception as e:  # Catching a more general exception might be more appropriate here
+        logging.error(f"Error updating stream links JSON: {e}")
+
 
 def correct_url_format(url):
     return url.replace("\\u002F", "/").replace("\\u0026", "&")
@@ -110,11 +128,26 @@ def read_stream_links(path=json_dir / "live_users.json"):
 
 
 def clear_old_stream_links(active_usernames):
-    all_usernames = list(shared_stream_links_store.data.keys())
-    for username in all_usernames:
-        if username not in active_usernames:
-            shared_stream_links_store.remove_value(username)
-            logging.info(f"Removed stream link for inactive user: {username}")
+    stream_links_path = json_dir / "stream_links.json"
+    try:
+        # Check if the stream links file exists and read it
+        if stream_links_path.exists():
+            with open(stream_links_path, "r") as file:
+                data = json.load(file)
+            
+            # Filter out inactive stream links
+            filtered_data = {username: link for username, link in data.items() if username in active_usernames}
+            
+            # Write the filtered links back to the file
+            with open(stream_links_path, "w") as file:
+                json.dump(filtered_data, file, indent=4)
+                
+            logging.info("Cleared old stream links successfully.")
+        else:
+            logging.info("Stream links file does not exist. No need to clear old links.")
+    except json.JSONDecodeError as e:
+        logging.error(f"Error reading or updating stream links JSON: {e}")
+
 
 
 def process_user(driver, user, force_flv_users):
@@ -133,7 +166,7 @@ def process_user(driver, user, force_flv_users):
             page_source = driver.page_source
             stream_link = find_stream_link(page_source, user.username, force_flv_users)
             if stream_link:
-                shared_stream_links_store.set_value(user.username, stream_link)
+                write_stream_links_to_file(user.username, stream_link)
             else:
                 logging.info(f"No stream link found for {user.username}")
         else:
@@ -148,13 +181,14 @@ def process_user(driver, user, force_flv_users):
                 page_source = driver.page_source
                 stream_link = find_stream_link(page_source, user.username, force_flv_users)
                 if stream_link:
-                    shared_stream_links_store.set_value(user.username, stream_link)
+                    write_stream_links_to_file(user.username, stream_link)
                 else:
                     logging.info(f"No stream link found for {user.username} after retry.")
             else:
                 logging.info(f"No room ID found for {user.username} after retry.")
     except Exception as e:
         logging.error(f"Error processing {user.username}: {e}")
+
 
 
 def main():
