@@ -3,7 +3,6 @@
 
 TTAutoRecord is a specialized utility designed to automate the recording of live streams on TikTok. 
 
-
 ## Features
 
 - Automatically record users you follow
@@ -11,6 +10,15 @@ TTAutoRecord is a specialized utility designed to automate the recording of live
 - Records age restricted lives
 - Records sub-only lives
 - GUI displaying status of recordings
+
+## System Requirements
+
+- 3GB **Spare** RAM
+- 64Bit Desktop CPU (I have tested this on a Xeon D-1521 and it works, however a high frequency desktop CPU will perform better)
+- SSD - Recommended to keep things running smoothly, of course you can offload recordings to a hard drive for storage.
+- 50Mbps FTTC/FTTP internet connection recommended.
+
+If you can, I would suggest having a PC/Server dedicated to running this. I have done my best to minimise the amount of requests to TikTok, however their webpages are incredibly demanding to render so it may cause other applications to lag.
 
 ## Prerequisites
 
