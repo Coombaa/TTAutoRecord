@@ -2,7 +2,7 @@ import os
 import threading
 import argparse
 import time
-from modules.download_live import main as download_live_main
+import subprocess
 from modules.get_stream_link import main as get_stream_link_main
 from modules.user_check import main as user_check_main
 from modules.gui import main as gui_main
@@ -16,6 +16,7 @@ args = parser.parse_args()
 
 # Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BINARIES_DIR = os.path.join(BASE_DIR, 'binaries') 
 LOCK_FILES_DIR = os.path.join(BASE_DIR, 'lock_files')
 SEGMENTS_DIR = os.path.join(BASE_DIR, 'segments')
 VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
@@ -42,6 +43,10 @@ def disable_quickedit():
             print('.. As a consequence the script might be automatically\
             paused on Windows terminal, please disable it manually!')
 
+def run_downloader():
+    # Execute the download_live.exe within its directory
+    executable_path = os.path.join(BINARIES_DIR, 'download_live.exe')
+    subprocess.run([executable_path], cwd=BINARIES_DIR)
 
 if __name__ == "__main__":
     
@@ -49,15 +54,14 @@ if __name__ == "__main__":
     create_folders()
     
     # Create threads for each module's main function
-    download_live_thread = threading.Thread(target=download_live_main)
     get_stream_link_thread = threading.Thread(target=get_stream_link_main)
     user_check_thread = threading.Thread(target=user_check_main)
     
     # Start the threads
     user_check_thread.start()
     time.sleep(15)
-    download_live_thread.start()
     get_stream_link_thread.start()
+    run_downloader()
     
     # Only start GUI thread if --nogui is not specified
     if not args.nogui:
@@ -65,7 +69,6 @@ if __name__ == "__main__":
         gui_thread.start()
 
     # Wait for all threads to finish
-    download_live_thread.join()
     get_stream_link_thread.join()
     user_check_thread.join()
     
