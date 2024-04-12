@@ -24,21 +24,22 @@ If you can, I would suggest having a PC/Server dedicated to running this. I have
 
 1. Install [Python](https://www.python.org/downloads/)
 
-3. Install required modules:
+2. Install the [EditThisCookie](https://chrome.google.com/webstore/detail/editthiscookie/fngmhnnpilhplaeedifhccceomclgfbg)  Chrome browser extension.
 
-```bash
-  pip install -r requirements.txt
-```
+3. Install [Mozilla Firefox](https://www.mozilla.org/en-GB/firefox/browsers/windows-64-bit/) **(64-bit version)**
 
-3. Install the [EditThisCookie](https://chrome.google.com/webstore/detail/editthiscookie/fngmhnnpilhplaeedifhccceomclgfbg)  Chrome browser extension.
-
-4. Install [Mozilla Firefox](https://www.mozilla.org/en-GB/firefox/browsers/windows-64-bit/) **(64-bit version)**
 ## Setup
 1. Set your TikTok language to **English** if it isn't already.
 
 2. Download and extract the requried files [here](https://github.com/Coombaa/TTAutoRecord/releases/download/v4.1.2/TTAutoRecord-4.1.2.zip)
 
-3. **Authenticate on TikTok**
+3. Install required modules from the requirements file:
+
+```bash
+  pip install -r requirements.txt
+```
+
+4. **Authenticate on TikTok**
    - Access [TikTok Live](https://www.tiktok.com/live) via your web browser and authenticate your account.
    - Open the EditThisCookie extension and select the 'Export' icon.
    - Paste the Cookies into \json\cookies.json
