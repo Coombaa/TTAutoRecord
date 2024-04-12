@@ -71,11 +71,11 @@ def find_stream_link(page_source, username, force_flv_users):
         if search:
             return correct_url_format(search.group(1))
 
-    search = flv_pattern.search(page_source)
+    search = m3u8_pattern.search(page_source)
     if search:
         return correct_url_format(search.group(1))
 
-    search = m3u8_pattern.search(page_source)
+    search = flv_pattern.search(page_source)
     if search:
         return correct_url_format(search.group(1))
 
