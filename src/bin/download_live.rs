@@ -113,7 +113,10 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
                 println!("Error concatenating videos for user {} with stream id {}", username, stream_id);
             }
         } else {
-            println!("Only one segment present, no concatenation needed for user {} with stream id {}", username, stream_id);
+            let datetime = Local::now().format("%Y-%m-%d").to_string();
+            let single_output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
+            fs::copy(&paths[0], &single_output_path)?;
+            println!("Only one segment present, no concatenation needed for user {} with stream id {}, Copying to videos folder", username, stream_id);
         }
     } else {
         println!("No valid segments found for user {} with stream id {}", username, stream_id);
