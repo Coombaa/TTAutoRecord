@@ -85,14 +85,14 @@ def get_live_users(driver):
         except NoSuchElementException:
             pass
 
-        candidate_divs = driver.find_elements(By.XPATH, "//div[contains(@class, 'tiktok-') and contains(@class, '-DivSideNavChannelWrapper')]")
+        candidate_divs = driver.find_elements(By.CSS_SELECTOR, "div.css-ch9w1g-DivSideNavChannelWrapper.enpn1680")
         following_div = None
         for div in candidate_divs:
             if "Following" in div.text:
                 following_div = div
                 break
         if following_div is not None:
-            a_elements = following_div.find_elements(By.TAG_NAME, 'a')
+            a_elements = following_div.find_elements(By.CSS_SELECTOR, "a.enpn1686.css-1ixrd5a-ALink-StyledLink.er1vbsz1")
             for a in a_elements:
                 user_data = {}
                 url = a.get_attribute('href')

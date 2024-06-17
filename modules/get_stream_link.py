@@ -54,7 +54,7 @@ def correct_url_format(url):
     return url.replace("\\u002F", "/").replace("\\u0026", "&")
 
 def find_room_id(page_source):
-    room_id_pattern = re.compile(r'room_id=(\d+)')
+    room_id_pattern = re.compile(r'"roomId":"(\d+)"')
     search = room_id_pattern.search(page_source)
     if search:
         return search.group(1)
