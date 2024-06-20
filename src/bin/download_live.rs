@@ -153,30 +153,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     loop {
-        let links = read_stream_links().await?;
-        for (username, stream_link) in links.iter() {
-            let lock_file_path = format!("{}/{}.lock", lock_files_dir, username);
-            if !Path::new(&lock_file_path).exists() {
-                println!("Downloading livestream for user: {}", username);
-                if let Err(e) = fs::write(&lock_file_path, "") {
-                    eprintln!("Error creating lock file for user {}: {}", username, e);
-                    continue;
-                }
-                let lock = Arc::new(Mutex::new(()));
-                let username = username.clone(); // Clone username to move into the closure
-                let stream_link = stream_link.clone(); // Clone stream_link to move into the closure
-                let handle = runtime.handle().clone(); // Clone handle for spawning tasks
-                let ffmpeg_path = current_exe_path()?.parent().unwrap().join("ffmpeg.exe");
-                handle.spawn(async move {
-                    if let Err(e) = download_livestream(&username, &stream_link, lock, &ffmpeg_path).await {
-                        eprintln!("Error downloading livestream for user {}: {}", username, e);
-                    } else {
-                        println!("Livestream downloaded successfully for user: {}", username);
+        match read_stream_links().await {
+            Ok(links) => {
+                for (username, stream_link) in links.iter() {
+                    let lock_file_path = format!("{}/{}.lock", lock_files_dir, username);
+                    if !Path::new(&lock_file_path).exists() {
+                        println!("Downloading livestream for user: {}", username);
+                        if let Err(e) = fs::write(&lock_file_path, "") {
+                            eprintln!("Error creating lock file for user {}: {}", username, e);
+                            continue;
+                        }
+                        let lock = Arc::new(Mutex::new(()));
+                        let username = username.clone();
+                        let stream_link = stream_link.clone();
+                        let handle = runtime.handle().clone();
+                        let ffmpeg_path = current_exe_path()?.parent().unwrap().join("ffmpeg.exe");
+                        handle.spawn(async move {
+                            if let Err(e) = download_livestream(&username, &stream_link, lock, &ffmpeg_path).await {
+                                eprintln!("Error downloading livestream for user {}: {}", username, e);
+                            } else {
+                                println!("Livestream downloaded successfully for user: {}", username);
+                            }
+                        });
+                        sleep(Duration::from_secs(1)).await;
                     }
-                });
-                sleep(Duration::from_secs(1)).await; // Add a 1-second delay
-            } else {
-
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to read stream links: {}", e);
+                sleep(Duration::from_secs(3)).await;
+                continue; // Skip this loop iteration and try again
             }
         }
         sleep(Duration::from_secs(3)).await;

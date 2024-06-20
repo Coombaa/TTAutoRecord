@@ -35,7 +35,6 @@ update_lock_file_cache()  # Initialize the lock file cache update
 def lock_file_exists(username):
     return os.path.exists(os.path.join(lock_files_dir, f'{username}.lock'))
 
-        
 def load_image_from_url_async(url, callback, root, size=(50, 50)):
     def thread_target():
         if url in image_cache:
@@ -55,20 +54,23 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
                 root.after(0, lambda: callback(photo_image))
             except Exception as e:
                 print(f"Error loading image: {e}")
+                # Load placeholder image in case of error
+                placeholder_image = Image.new('RGB', size, (255, 0, 0))  # Red placeholder
+                draw = ImageDraw.Draw(placeholder_image)
+                draw.ellipse((0, 0) + size, fill=(0, 255, 0))  # Green circle in the placeholder
+                photo_image = ImageTk.PhotoImage(placeholder_image)
+                root.after(0, lambda: callback(photo_image))
     threading.Thread(target=thread_target).start()
-    
-    
+
 def set_image(index, img, canvas):
     y_position = index * 80 + 35
     image_id = canvas.create_image(50, y_position, image=img)
     image_references.append(img)
 
-
 def create_red_square(canvas, root, x, y):
     size = 8
     square_id = canvas.create_rectangle(x - size//2, y - size//2, x + size//2, y + size//2, fill="red", outline="red")
     return square_id
-
 
 def update_gui(canvas, root, currently_live_label):
     global image_references
@@ -127,7 +129,7 @@ def run_gui():
     global stop_threads
 
     root = ctk.CTk()
-    root.title("TTAutoRecord v4.1.0")
+    root.title("TTAutoRecord v4.1.3")
     root.geometry("500x800")
 
     canvas = tk.Canvas(root, bg="black", highlightthickness=0)
@@ -155,10 +157,10 @@ def run_gui():
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
-    
+
 def main():
     run_gui()
-    
+
 if __name__ == '__main__':
     try:
         main()
