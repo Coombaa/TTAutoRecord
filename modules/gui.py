@@ -6,7 +6,7 @@ import logging
 from colorama import Fore, init
 import customtkinter as ctk
 import tkinter as tk
-from PIL import Image, ImageTk, ImageDraw, ImageOps
+from PIL import Image, ImageTk, ImageDraw, ImageOps, UnidentifiedImageError
 from io import BytesIO
 import tkinter.font as tkFont
 
@@ -35,6 +35,12 @@ update_lock_file_cache()  # Initialize the lock file cache update
 def lock_file_exists(username):
     return os.path.exists(os.path.join(lock_files_dir, f'{username}.lock'))
 
+def load_placeholder_image(size):
+    placeholder_image = Image.new('RGB', size, (255, 0, 0))  # Red placeholder
+    draw = ImageDraw.Draw(placeholder_image)
+    draw.ellipse((0, 0) + size, fill=(0, 255, 0))  # Green circle in the placeholder
+    return ImageTk.PhotoImage(placeholder_image)
+
 def load_image_from_url_async(url, callback, root, size=(50, 50)):
     def thread_target():
         if url in image_cache:
@@ -42,6 +48,7 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
         else:
             try:
                 response = requests.get(url)
+                response.raise_for_status()
                 img = Image.open(BytesIO(response.content))
                 img.thumbnail(size)
                 mask = Image.new('L', size, 0)
@@ -52,13 +59,11 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
                 photo_image = ImageTk.PhotoImage(img)
                 image_cache[url] = photo_image
                 root.after(0, lambda: callback(photo_image))
-            except Exception as e:
+            except (requests.RequestException, UnidentifiedImageError, IOError, Exception) as e:
                 print(f"Error loading image: {e}")
                 # Load placeholder image in case of error
-                placeholder_image = Image.new('RGB', size, (255, 0, 0))  # Red placeholder
-                draw = ImageDraw.Draw(placeholder_image)
-                draw.ellipse((0, 0) + size, fill=(0, 255, 0))  # Green circle in the placeholder
-                photo_image = ImageTk.PhotoImage(placeholder_image)
+                photo_image = load_placeholder_image(size)
+                image_cache[url] = photo_image
                 root.after(0, lambda: callback(photo_image))
     threading.Thread(target=thread_target).start()
 
