@@ -68,9 +68,12 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
     threading.Thread(target=thread_target).start()
 
 def set_image(index, img, canvas):
-    y_position = index * 80 + 35
-    image_id = canvas.create_image(50, y_position, image=img)
-    image_references.append(img)
+    try:
+        y_position = index * 80 + 35
+        image_id = canvas.create_image(50, y_position, image=img)
+        image_references.append(img)
+    except Exception as e:
+        print(f"Failed to allocate bitmap for index {index}: {e}")
 
 def create_red_square(canvas, root, x, y):
     size = 8
@@ -134,7 +137,7 @@ def run_gui():
     global stop_threads
 
     root = ctk.CTk()
-    root.title("TTAutoRecord v4.1.3")
+    root.title("TTAutoRecord v4.1.0")
     root.geometry("500x800")
 
     canvas = tk.Canvas(root, bg="black", highlightthickness=0)
