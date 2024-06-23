@@ -13,10 +13,10 @@ import tkinter.font as tkFont
 import psutil
 
 # Initialize global variables
-image_cache = {}
-lock_file_cache = set()
+image_cache = {}  # Global image cache
+lock_file_cache = set()  # Global lock file cache
 init(autoreset=True)
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("dark")  # Set theme for CustomTkinter
 stop_threads = False
 
 # Configure logging
@@ -27,36 +27,41 @@ script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 json_dir = os.path.join(script_dir, 'json')
 lock_files_dir = os.path.join(script_dir, 'lock_files')
 
+def log_memory_usage():
+    process = psutil.Process(os.getpid())
+    logging.info(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+
 # Function to update lock file cache
 def update_lock_file_cache():
     global lock_file_cache
+    lock_file_cache.clear()
     lock_file_path = 'lock_files'
     if not os.path.exists(lock_file_path):
         os.makedirs(lock_file_path)
-    lock_file_cache = {filename.replace('.lock', '') for filename in os.listdir(lock_files_dir) if filename.endswith('.lock')}
-    threading.Timer(30, update_lock_file_cache).start()
+    lock_file_cache.update({filename.replace('.lock', '') for filename in os.listdir(lock_files_dir) if filename.endswith('.lock')})
+    threading.Timer(30, update_lock_file_cache).start()  # Update lock file cache every 30 seconds
 
-update_lock_file_cache()
+update_lock_file_cache()  # Initialize the lock file cache update
+
+def clear_image_cache():
+    global image_cache
+    image_cache.clear()  # Clear the cache
+    gc.collect()  # Force garbage collection to free up memory
+    log_memory_usage()
+
+def clear_all_caches():
+    clear_image_cache()
+    update_lock_file_cache()  # Refresh the lock file cache
+    threading.Timer(300, clear_all_caches).start()  # Schedule this function to run every 5 minutes
 
 def lock_file_exists(username):
     return os.path.exists(os.path.join(lock_files_dir, f'{username}.lock'))
 
 def load_placeholder_image(size):
-    placeholder_image = Image.new('RGB', size, (255, 0, 0))
+    placeholder_image = Image.new('RGB', size, (255, 0, 0))  # Red placeholder
     draw = ImageDraw.Draw(placeholder_image)
-    draw.ellipse((0, 0) + size, fill=(0, 255, 0))
+    draw.ellipse((0, 0) + size, fill=(0, 255, 0))  # Green circle in the placeholder
     return ImageTk.PhotoImage(placeholder_image)
-
-def log_memory_usage():
-    process = psutil.Process(os.getpid())
-    logging.info(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
-
-def clear_image_cache():
-    global image_cache
-    image_cache = {}
-    gc.collect()
-    log_memory_usage()
-    threading.Timer(300, clear_image_cache).start()
 
 def load_image_from_url_async(url, callback, root, size=(50, 50)):
     def thread_target():
@@ -93,7 +98,6 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
                 image_cache[url] = photo_image
                 root.after(0, lambda: callback(photo_image))
             finally:
-                log_memory_usage()
                 gc.collect()  # Force garbage collection to free up memory
     threading.Thread(target=thread_target).start()
 
@@ -106,8 +110,6 @@ def set_image(index, img, canvas):
         error_message = f"Failed to allocate bitmap for index {index}: {e}"
         print(error_message)
         logging.error(error_message)
-    finally:
-        log_memory_usage()
 
 def create_red_square(canvas, root, x, y):
     try:
@@ -123,6 +125,7 @@ def update_gui(canvas, root, currently_live_label):
     global image_references
     image_references = []
 
+    # Define fonts
     username_font = tkFont.Font(family="Helvetica", size=12, weight="bold")
     recording_font = tkFont.Font(family="Helvetica", size=8)
 
@@ -130,10 +133,11 @@ def update_gui(canvas, root, currently_live_label):
     users = []
 
     try:
+        # Adjusted to use the json_dir for the correct path
         live_users_file_path = os.path.join(json_dir, 'live_users.json')
         with open(live_users_file_path, 'r') as file:
             file_content = file.read().strip()
-            if file_content: 
+            if file_content:  # Check if the file content is not empty
                 users = json.loads(file_content)
             else:
                 error_message = "JSON file is empty"
@@ -149,6 +153,7 @@ def update_gui(canvas, root, currently_live_label):
         print(error_message)
         logging.error(error_message)
 
+    # Ensure the lock_file_cache is updated.
     update_lock_file_cache()
     currently_recording_count = len(lock_file_cache)
 
@@ -161,6 +166,7 @@ def update_gui(canvas, root, currently_live_label):
         canvas.create_rectangle(0, y_position, canvas.winfo_width(), y_position + 70, fill="#1c1c1c", outline="")
         canvas.create_text(100, y_position + 35, text=user.get('username', 'N/A'), anchor="w", font=username_font, fill="white")
         if user.get('profile_picture'):
+            # Use a lambda to correctly pass the index and img to set_image function
             load_image_from_url_async(user['profile_picture'], lambda img, index=index: set_image(index, img, canvas), root)
         if lock_file_exists(user.get('username', '')):
             text_x = canvas.winfo_width() - 35
@@ -192,6 +198,7 @@ def run_gui():
         top_frame = ctk.CTkFrame(root, fg_color="black")
         top_frame.pack(side="top", fill="x")
 
+        # Create and pack the label inside the frame
         currently_live_label = ctk.CTkLabel(top_frame, text="Currently Recording: 0/0", fg_color="black", bg_color="black", font=("Helvetica", 18, "bold"), anchor="w")
         currently_live_label.pack(side="left", anchor="nw" , padx=10, pady=1)
         
@@ -201,6 +208,7 @@ def run_gui():
         scrollbar.pack(side="right", fill="y")
         canvas.bind_all("<MouseWheel>", lambda event: on_mousewheel(event, canvas))
         
+        # Pass the label as an argument to update_gui
         root.after(1000, update_gui, canvas, root, currently_live_label)
 
         def on_closing():
@@ -216,7 +224,7 @@ def run_gui():
         logging.error(error_message)
 
 def main():
-    clear_image_cache()
+    clear_all_caches()  # Start the periodic cache clearing function
     run_gui()
 
 if __name__ == '__main__':

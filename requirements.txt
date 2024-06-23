@@ -3,3 +3,4 @@ requests
 colorama
 customtkinter
 Pillow
+psutil
