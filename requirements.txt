@@ -4,3 +4,4 @@ colorama
 customtkinter
 Pillow
 psutil
+memory-profiler
