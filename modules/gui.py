@@ -17,6 +17,10 @@ init(autoreset=True)
 ctk.set_appearance_mode("dark")  # Set theme for CustomTkinter
 stop_threads = False
 
+# Configure logging
+logging.basicConfig(filename='gui.log', level=logging.ERROR,
+                    format='%(asctime)s:%(levelname)s:%(message)s')
+
 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 json_dir = os.path.join(script_dir, 'json')
 lock_files_dir = os.path.join(script_dir, 'lock_files')
@@ -59,9 +63,19 @@ def load_image_from_url_async(url, callback, root, size=(50, 50)):
                 photo_image = ImageTk.PhotoImage(img)
                 image_cache[url] = photo_image
                 root.after(0, lambda: callback(photo_image))
-            except (requests.RequestException, UnidentifiedImageError, IOError, Exception) as e:
-                print(f"Error loading image: {e}")
+            except (requests.RequestException, UnidentifiedImageError, IOError) as e:
+                error_message = f"Error loading image from URL {url}: {e}"
+                print(error_message)
+                logging.error(error_message)
                 # Load placeholder image in case of error
+                photo_image = load_placeholder_image(size)
+                image_cache[url] = photo_image
+                root.after(0, lambda: callback(photo_image))
+            except Exception as e:
+                error_message = f"Unexpected error for URL {url}: {e}"
+                print(error_message)
+                logging.error(error_message)
+                # Load placeholder image in case of unexpected error
                 photo_image = load_placeholder_image(size)
                 image_cache[url] = photo_image
                 root.after(0, lambda: callback(photo_image))
@@ -73,7 +87,9 @@ def set_image(index, img, canvas):
         image_id = canvas.create_image(50, y_position, image=img)
         image_references.append(img)
     except Exception as e:
-        print(f"Failed to allocate bitmap for index {index}: {e}")
+        error_message = f"Failed to allocate bitmap for index {index}: {e}"
+        print(error_message)
+        logging.error(error_message)
 
 def create_red_square(canvas, root, x, y):
     size = 8
@@ -100,11 +116,16 @@ def update_gui(canvas, root, currently_live_label):
                 users = json.loads(file_content)
             else:
                 print("JSON file is empty")
+                logging.error("JSON file is empty")
         total_live_users = len(users)
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON: {e}")
+        error_message = f"Error decoding JSON: {e}"
+        print(error_message)
+        logging.error(error_message)
     except Exception as e:
-        print(f"Unexpected error reading live users: {e}")
+        error_message = f"Unexpected error reading live users: {e}"
+        print(error_message)
+        logging.error(error_message)
 
     # Ensure the lock_file_cache is updated.
     update_lock_file_cache()
@@ -175,4 +196,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logging.info("Script execution stopped by user.")
     except Exception as e:
-        logging.critical(f"Critical error, stopping script: {e}")
+        error_message = f"Critical error, stopping script: {e}"
+        print(error_message)
+        logging.critical(error_message)
