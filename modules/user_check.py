@@ -13,6 +13,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# Initialize colorama
+init()
+
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 binaries_dir = os.path.join(script_dir, 'binaries')
 json_dir = os.path.join(script_dir, 'json')
@@ -69,7 +72,7 @@ def auth(driver):
                 del cookie['sameSite']
             driver.add_cookie(cookie)
         driver.refresh()
-        print(Fore.GREEN + "Successfully authenticated! Starting monitor..")
+        print(Fore.WHITE + "Successfully authenticated! Starting monitor..")
 
 def get_live_users(driver):
     live_users_data = []
@@ -85,14 +88,14 @@ def get_live_users(driver):
         except NoSuchElementException:
             pass
 
-        candidate_divs = driver.find_elements(By.CSS_SELECTOR, "div.css-ch9w1g-DivSideNavChannelWrapper.enpn1680")
+        candidate_divs = driver.find_elements(By.CSS_SELECTOR, "div[data-e2e='live-side-nav-channel']")
         following_div = None
         for div in candidate_divs:
             if "Following" in div.text:
                 following_div = div
                 break
         if following_div is not None:
-            a_elements = following_div.find_elements(By.CSS_SELECTOR, "a.enpn1686.css-1ixrd5a-ALink-StyledLink.er1vbsz1")
+            a_elements = following_div.find_elements(By.CSS_SELECTOR, "a[href*='/@']")
             for a in a_elements:
                 user_data = {}
                 url = a.get_attribute('href')
@@ -122,7 +125,7 @@ def write_to_json(live_users_data, filename='live_users.json'):
         os.makedirs(json_folder_path)
     with open(file_path, 'w') as file:
         json.dump(live_users_data, file, indent=4)
-    print(f"{Fore.GREEN}Live User List Updated!")
+    print(f"{Fore.WHITE}Live User List Updated!")
         
 def lock_file_exists(username):
     lock_file_path = os.path.join(lock_files_dir, f'{username}.lock')
@@ -140,3 +143,4 @@ if __name__ == '__main__':
         logging.info("Script execution stopped by user.")
     except Exception as e:
         logging.critical(f"Critical error, stopping script: {e}")
+
