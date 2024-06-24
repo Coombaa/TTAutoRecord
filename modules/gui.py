@@ -4,6 +4,7 @@ import threading
 import requests
 import logging
 import gc
+import weakref
 from colorama import Fore, init
 import customtkinter as ctk
 import tkinter as tk
@@ -13,7 +14,7 @@ import tkinter.font as tkFont
 import psutil
 
 # Initialize global variables
-image_cache = {}  # Global image cache
+image_cache = weakref.WeakValueDictionary()  # Use weak references for the image cache
 lock_file_cache = set()  # Global lock file cache
 init(autoreset=True)
 ctk.set_appearance_mode("dark")  # Set theme for CustomTkinter
@@ -30,6 +31,7 @@ lock_files_dir = os.path.join(script_dir, 'lock_files')
 def log_memory_usage():
     process = psutil.Process(os.getpid())
     logging.info(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+    print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
 # Function to update lock file cache
 def update_lock_file_cache():
@@ -52,6 +54,7 @@ def clear_image_cache():
 def clear_all_caches():
     clear_image_cache()
     update_lock_file_cache()  # Refresh the lock file cache
+    gc.collect()  # Force garbage collection to free up memory
     threading.Timer(300, clear_all_caches).start()  # Schedule this function to run every 5 minutes
 
 def lock_file_exists(username):
@@ -176,6 +179,7 @@ def update_gui(canvas, root, currently_live_label):
 
     canvas.config(scrollregion=canvas.bbox("all"))
     root.after(5000, lambda: update_gui(canvas, root, currently_live_label))
+    gc.collect()  # Force garbage collection to free up memory
 
 def on_mousewheel(event, canvas):
     try:
