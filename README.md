@@ -20,7 +20,7 @@ TTAutoRecord is a specialized utility designed to automate the recording of live
 
 ## System Requirements
 
-- 3GB **Spare** RAM
+- 4GB **Spare** RAM
 - 64Bit Desktop CPU (I have tested this on a Xeon D-1521 and it works, however a high frequency desktop CPU will perform better)
 - SSD - Recommended to keep things running smoothly, of course you can offload recordings to a hard drive for storage.
 - 50Mbps FTTC/FTTP internet connection recommended.
@@ -54,11 +54,5 @@ If you can, I would suggest having a PC/Server dedicated to running this. I have
     
 ## Usage
 
-1. Run with GUI
-```bash
-py main.py
-```
-2. Run without GUI
-```bash
-py main.py --nogui
-```
+1. Run main.py
+2. run gui.py

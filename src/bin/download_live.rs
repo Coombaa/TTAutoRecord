@@ -85,7 +85,7 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
         let concat_file_path = format!("{}/{}_{}_concat.txt", user_segment_dir, username, stream_id);
         let mut concat_file = File::create(&concat_file_path)?;
 
-        println!("Creating concatenation file for {}'s videos with stream id {}.", username, stream_id);
+        let _now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         for path in &paths {
             writeln!(concat_file, "file '{}'", path.canonicalize()?.display().to_string().replace('\\', "/"))?;
@@ -110,22 +110,22 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
                 .status()?;
 
             if !status.success() {
-                println!("Error concatenating videos for user {} with stream id {}", username, stream_id);
+                let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                println!("{} - ERROR - Error concatenating videos for user {} with stream id {}", now, username, stream_id);
             }
         } else {
             let datetime = Local::now().format("%Y-%m-%d").to_string();
             let single_output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
             fs::copy(&paths[0], &single_output_path)?;
-            println!("Only one segment present, no concatenation needed for user {} with stream id {}, Copying to videos folder", username, stream_id);
+            let _now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         }
     } else {
-        println!("No valid segments found for user {} with stream id {}", username, stream_id);
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        println!("{} - ERROR - No valid segments found for user {} with stream id {}", now, username, stream_id);
     }
 
     Ok(())
 }
-
-
 
 fn current_exe_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(env::current_exe()?)
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Clear .lock files from lock_files directory
     if let Err(e) = clear_lock_files(lock_files_dir).await {
-        eprintln!("Failed to clear lock files: {}", e);
+        eprintln!(" - ERROR - Failed to clear lock files: {}", e);
     }
 
     fs::create_dir_all(lock_files_dir)?;
@@ -153,30 +153,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     loop {
-        let links = read_stream_links().await?;
-        for (username, stream_link) in links.iter() {
-            let lock_file_path = format!("{}/{}.lock", lock_files_dir, username);
-            if !Path::new(&lock_file_path).exists() {
-                println!("Downloading livestream for user: {}", username);
-                if let Err(e) = fs::write(&lock_file_path, "") {
-                    eprintln!("Error creating lock file for user {}: {}", username, e);
-                    continue;
-                }
-                let lock = Arc::new(Mutex::new(()));
-                let username = username.clone(); // Clone username to move into the closure
-                let stream_link = stream_link.clone(); // Clone stream_link to move into the closure
-                let handle = runtime.handle().clone(); // Clone handle for spawning tasks
-                let ffmpeg_path = current_exe_path()?.parent().unwrap().join("ffmpeg.exe");
-                handle.spawn(async move {
-                    if let Err(e) = download_livestream(&username, &stream_link, lock, &ffmpeg_path).await {
-                        eprintln!("Error downloading livestream for user {}: {}", username, e);
-                    } else {
-                        println!("Livestream downloaded successfully for user: {}", username);
+        match read_stream_links().await {
+            Ok(links) => {
+                for (username, stream_link) in links.iter() {
+                    let lock_file_path = format!("{}/{}.lock", lock_files_dir, username);
+                    if !Path::new(&lock_file_path).exists() {
+                        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                        println!("{} - INFO - Downloading livestream for user: {}", now, username);
+                        if let Err(e) = fs::write(&lock_file_path, "") {
+                            eprintln!("- ERROR - Error creating lock file for user {}: {}", username, e);
+                            continue;
+                        }
+                        let lock = Arc::new(Mutex::new(()));
+                        let username = username.clone();
+                        let stream_link = stream_link.clone();
+                        let handle = runtime.handle().clone();
+                        let ffmpeg_path = current_exe_path()?.parent().unwrap().join("ffmpeg.exe");
+                        handle.spawn(async move {
+                            if let Err(e) = download_livestream(&username, &stream_link, lock, &ffmpeg_path).await {
+                                eprintln!(" - ERROR - failed to download livestream for user {}: {}", username, e);
+                            } else {
+                                let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                                println!("{} - INFO - Livestream downloaded successfully for user: {}", now, username);
+                            }
+                        });
+                        sleep(Duration::from_secs(1)).await;
                     }
-                });
-                sleep(Duration::from_secs(1)).await; // Add a 1-second delay
-            } else {
-
+                }
+            }
+            Err(e) => {
+                eprintln!(" - ERROR - Failed to read stream links: {}", e);
+                sleep(Duration::from_secs(3)).await;
+                continue; // Skip this loop iteration and try again
             }
         }
         sleep(Duration::from_secs(3)).await;

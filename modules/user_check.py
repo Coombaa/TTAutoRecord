@@ -13,6 +13,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# Initialize colorama
+init()
+
+# Setup basic logging with date and time format
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 binaries_dir = os.path.join(script_dir, 'binaries')
 json_dir = os.path.join(script_dir, 'json')
@@ -33,8 +39,8 @@ def browser_operations():
             write_to_json(live_user_urls)
             time.sleep(10)
         except WebDriverException as e:
-            print(f"WebDriverException occurred: {e}")
-            print("Attempting to restart browser...")
+            logging.error(f"WebDriverException occurred: {e}")
+            logging.info("Attempting to restart browser...")
             driver.quit()
             time.sleep(5)
             driver = start_browser()
@@ -43,7 +49,7 @@ def browser_operations():
     driver.quit()
 
 def start_browser():
-    print(Fore.YELLOW + "Starting browser..")
+    logging.info("Starting browser..")
     geckodriver_path = os.path.join(binaries_dir, "geckodriver.exe")
     firefox_binary_path = 'C:/Program Files/Mozilla Firefox/firefox.exe'
     options = Options()
@@ -55,10 +61,10 @@ def start_browser():
     return driver
 
 def auth(driver):
-    print(Fore.YELLOW + "Authenticating..")
+    logging.info("Authenticating..")
     cookies_path = os.path.join(json_dir, 'cookies.json')
     if os.path.getsize(cookies_path) <= 0:
-        print(Fore.RED + "Error: cookies.json is empty. Read the README file!")
+        logging.error("Error: cookies.json is empty. Read the README file!")
         time.sleep(10)
         sys.exit()
     else:
@@ -69,7 +75,7 @@ def auth(driver):
                 del cookie['sameSite']
             driver.add_cookie(cookie)
         driver.refresh()
-        print(Fore.GREEN + "Successfully authenticated! Starting monitor..")
+        logging.info("Successfully authenticated! Starting monitor..")
 
 def get_live_users(driver):
     live_users_data = []
@@ -85,14 +91,14 @@ def get_live_users(driver):
         except NoSuchElementException:
             pass
 
-        candidate_divs = driver.find_elements(By.XPATH, "//div[contains(@class, 'tiktok-') and contains(@class, '-DivSideNavChannelWrapper')]")
+        candidate_divs = driver.find_elements(By.CSS_SELECTOR, "div[data-e2e='live-side-nav-channel']")
         following_div = None
         for div in candidate_divs:
             if "Following" in div.text:
                 following_div = div
                 break
         if following_div is not None:
-            a_elements = following_div.find_elements(By.TAG_NAME, 'a')
+            a_elements = following_div.find_elements(By.CSS_SELECTOR, "a[href*='/@']")
             for a in a_elements:
                 user_data = {}
                 url = a.get_attribute('href')
@@ -107,7 +113,7 @@ def get_live_users(driver):
                     user_data['profile_picture'] = None
                 live_users_data.append(user_data)
     except Exception as e:
-        print(f"An unexpected exception occurred: {e}")
+        logging.error(f"An unexpected exception occurred: {e}")
     return live_users_data
 
 def extract_username(url):
@@ -122,7 +128,7 @@ def write_to_json(live_users_data, filename='live_users.json'):
         os.makedirs(json_folder_path)
     with open(file_path, 'w') as file:
         json.dump(live_users_data, file, indent=4)
-    print(f"{Fore.GREEN}Live User List Updated!")
+    logging.info("Live User List Updated!")
         
 def lock_file_exists(username):
     lock_file_path = os.path.join(lock_files_dir, f'{username}.lock')
