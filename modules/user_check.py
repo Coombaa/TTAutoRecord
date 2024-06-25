@@ -17,7 +17,7 @@ from selenium.webdriver.support import expected_conditions as EC
 init()
 
 # Setup basic logging with date and time format
-logging.basicConfig(level=logging.INFO, format='%(Y-%m-%d %H:%M:%S) - %(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 binaries_dir = os.path.join(script_dir, 'binaries')

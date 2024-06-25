@@ -11,7 +11,7 @@ from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 
 # Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(Y-%m-%d %H:%M:%S) - %(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 class StreamLink:
     def __init__(self, username, stream_link, profile_picture=None):
