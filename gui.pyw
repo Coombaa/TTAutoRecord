@@ -30,7 +30,7 @@ def monitor_and_restart():
             print(Fore.YELLOW + f"Current memory usage: {memory_usage:.2f} MB")
 
             # If memory usage exceeds a threshold, restart the GUI
-            if memory_usage > 200:
+            if memory_usage > 100:
                 logging.info("Memory usage exceeded threshold. Restarting GUI.")
                 gui_process.terminate()
                 gui_process.wait()

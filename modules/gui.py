@@ -4,7 +4,6 @@ import threading
 import requests
 import logging
 import gc
-import weakref
 from colorama import Fore, init
 import customtkinter as ctk
 import tkinter as tk
@@ -31,12 +30,16 @@ image_references = []
 
 def update_lock_file_cache():
     global lock_file_cache
+    global stop_threads
+    if stop_threads:
+        return
     lock_file_cache.clear()
     lock_file_path = 'lock_files'
     if not os.path.exists(lock_file_path):
         os.makedirs(lock_file_path)
     lock_file_cache.update({filename.replace('.lock', '') for filename in os.listdir(lock_files_dir) if filename.endswith('.lock')})
-    threading.Timer(30, update_lock_file_cache).start()
+    if not stop_threads:
+        threading.Timer(30, update_lock_file_cache).start()
 
 update_lock_file_cache()
 
@@ -46,10 +49,14 @@ def clear_image_cache():
     gc.collect()
 
 def clear_all_caches():
+    global stop_threads
+    if stop_threads:
+        return
     clear_image_cache()
     update_lock_file_cache()
     gc.collect()
-    threading.Timer(300, clear_all_caches).start()
+    if not stop_threads:
+        threading.Timer(300, clear_all_caches).start()
 
 def lock_file_exists(username):
     return os.path.exists(os.path.join(lock_files_dir, f'{username}.lock'))
@@ -62,6 +69,9 @@ def load_placeholder_image(size):
 
 def load_image_from_url_async(url, callback, root, size=(50, 50)):
     def thread_target():
+        global stop_threads
+        if stop_threads:
+            return
         if url in image_cache:
             root.after(0, lambda: callback(image_cache[url]))
         else:
@@ -119,6 +129,11 @@ def create_red_square(canvas, root, x, y):
 def update_gui(canvas, root, currently_live_label):
     global image_references
     global current_live_users
+    global stop_threads
+
+    if stop_threads:
+        return
+
     image_references = []
 
     username_font = tkFont.Font(family="Helvetica", size=12, weight="bold")
@@ -177,7 +192,8 @@ def update_gui(canvas, root, currently_live_label):
     current_live_users = new_live_users
 
     canvas.config(scrollregion=canvas.bbox("all"))
-    root.after(5000, lambda: update_gui(canvas, root, currently_live_label))
+    if not stop_threads:
+        root.after(5000, lambda: update_gui(canvas, root, currently_live_label))
     gc.collect()
 
 def on_mousewheel(event, canvas):
