@@ -3,13 +3,6 @@
 
 TTAutoRecord is a specialized utility designed to automate the recording of live streams on TikTok. 
 
-### ❗IMPORTANT❗
-**TikTok are slowly rolling out a new update to the website across accounts, if no streams are being detected replace the get_stream_link and user_check modules with the files below:**
-
-[get_stream_link.py](https://github.com/Coombaa/TTAutoRecord/blob/4.1.3-livepageupdate/modules/get_stream_link.py)
-
-[user_check.py](https://github.com/Coombaa/TTAutoRecord/blob/4.1.3-livepageupdate/modules/user_check.py)
-
 ## Features
 
 - Automatically record users you follow
@@ -55,4 +48,4 @@ If you can, I would suggest having a PC/Server dedicated to running this. I have
 ## Usage
 
 1. Run main.py
-2. run gui.py
+2. run gui.pyw
