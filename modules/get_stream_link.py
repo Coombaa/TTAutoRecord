@@ -11,7 +11,7 @@ from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 
 # Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(Y-%m-%d %H:%M:%S) - %(asctime)s - %(levelname)s - %(message)s')
 
 class StreamLink:
     def __init__(self, username, stream_link, profile_picture=None):
@@ -139,7 +139,6 @@ def clear_old_stream_links(active_usernames):
             filtered_data = {username: link for username, link in data.items() if username in active_usernames}
             with open(stream_links_path, "w") as file:
                 json.dump(filtered_data, file, indent=4)
-            logging.info("Cleared old stream links successfully.")
         else:
             logging.info("Stream links file does not exist. No need to clear old links.")
     except json.JSONDecodeError as e:

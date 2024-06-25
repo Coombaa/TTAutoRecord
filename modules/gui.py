@@ -19,7 +19,7 @@ init(autoreset=True)
 ctk.set_appearance_mode("dark")
 stop_threads = False
 
-logging.basicConfig(filename='app.log', level=logging.ERROR,
+logging.basicConfig(filename='gui.log', level=logging.ERROR,
                     format='%(asctime)s:%(levelname)s:%(message)s')
 
 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
