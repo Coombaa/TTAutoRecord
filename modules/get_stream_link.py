@@ -53,7 +53,7 @@ def correct_url_format(url):
     return url.replace("\\u002F", "/").replace("\\u0026", "&")
 
 def find_room_id(page_source):
-    room_id_pattern = re.compile(r'"roomId":"(\d+)"')
+    room_id_pattern = re.compile(r'<meta property="al:ios:url" content="snssdk1233://live\?room_id=(\d+)"')
     search = room_id_pattern.search(page_source)
     if search:
         return search.group(1)
@@ -150,7 +150,7 @@ def process_user(driver, user, force_flv_users):
         return
 
     try:
-        driver.get(f"view-source:{user.stream_link}")
+        driver.get(f"{user.stream_link}")
         page_source = driver.page_source
         room_id = find_room_id(page_source)
 
