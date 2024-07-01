@@ -164,7 +164,7 @@ def process_user(driver, user, force_flv_users):
             else:
                 logging.info(f"No stream link found for {user.username}")
         else:
-            logging.info(f"No room ID found for {user.username}. Passing firewall challenge...")
+            #logging.info(f"No room ID found for {user.username}. Passing firewall challenge...")
             driver.get(user.stream_link)
             time.sleep(3)
             page_source = driver.page_source
