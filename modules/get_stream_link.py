@@ -7,6 +7,7 @@ import logging
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 
@@ -144,14 +145,32 @@ def clear_old_stream_links(active_usernames):
     except json.JSONDecodeError as e:
         logging.error(f"Error reading or updating stream links JSON: {e}")
 
+def wait_for_regex(driver, pattern, timeout=10):
+    class RegexMatchCondition:
+        def __init__(self, pattern):
+            self.pattern = pattern
+
+        def __call__(self, driver):
+            page_source = driver.page_source
+            if re.search(self.pattern, page_source):
+                return page_source
+            return False
+
+    return WebDriverWait(driver, timeout).until(RegexMatchCondition(pattern))
+
 def process_user(driver, user, force_flv_users):
     lock_file_path = lock_files_dir / f"{user.username}.lock"
     if lock_file_path.exists():
         return
 
     try:
-        driver.get(f"{user.stream_link}")
-        page_source = driver.page_source
+        driver.get(user.stream_link)
+        try:
+            page_source = wait_for_regex(driver, r'<meta property="al:ios:url" content="snssdk1233://live\?room_id=(\d+)"', timeout=10)
+        except TimeoutException:
+            logging.info(f"Room ID not found for {user.username} within 10 seconds.")
+            return
+
         room_id = find_room_id(page_source)
 
         if room_id:
@@ -164,22 +183,7 @@ def process_user(driver, user, force_flv_users):
             else:
                 logging.info(f"No stream link found for {user.username}")
         else:
-            #logging.info(f"No room ID found for {user.username}. Passing firewall challenge...")
-            driver.get(user.stream_link)
-            time.sleep(3)
-            page_source = driver.page_source
-            room_id = find_room_id(page_source)
-            if room_id:
-                webcast_url = f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
-                driver.get(f"view-source:{webcast_url}")
-                page_source = driver.page_source
-                stream_link = find_stream_link(page_source, user.username, force_flv_users)
-                if stream_link:
-                    write_stream_links_to_file(user.username, stream_link)
-                else:
-                    logging.info(f"No stream link found for {user.username} after retry.")
-            else:
-                logging.info(f"No room ID found for {user.username} after retry.")
+            logging.info(f"No room ID found for {user.username}.")
     except TimeoutException as e:
         logging.error(f"Timeout error processing {user.username}: {e}")
     except Exception as e:
