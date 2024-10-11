@@ -5,7 +5,7 @@ import sys
 import time
 import logging
 from selenium.common.exceptions import TimeoutException
-import undetected_chromedriver.v2 as uc
+import undetected_chromedriver as uc
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
