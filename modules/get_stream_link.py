@@ -4,13 +4,10 @@ import re
 import sys
 import time
 import logging
-from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.firefox.options import Options
 from selenium.common.exceptions import TimeoutException
+import undetected_chromedriver.v2 as uc
 from pathlib import Path
 
-# Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 class StreamLink:
@@ -91,17 +88,12 @@ def load_force_flv_users():
         return []
 
 def start_browser():
-    geckodriver_path = binaries_dir / "geckodriver.exe"    
-    firefox_binary_path = 'C:/Program Files/Mozilla Firefox/firefox.exe'
-    options = Options()
-    options.binary_location = firefox_binary_path
-    options.add_argument('-headless')
-    options.set_preference("browser.cache.disk.enable", False)
-    options.set_preference("browser.cache.memory.enable", False)
-    options.set_preference("browser.cache.offline.enable", False)
-    options.set_preference("network.http.use-cache", False)
-    service = Service(executable_path=geckodriver_path)
-    driver = webdriver.Firefox(service=service, options=options)
+    logging.info("Starting undetected Chrome browser...")
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = uc.Chrome(options=options)
     driver.set_page_load_timeout(30)
     return driver
 

@@ -5,18 +5,14 @@ import json
 import logging
 from urllib.parse import urlparse
 from colorama import Fore, init
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
+import undetected_chromedriver as uc
 from selenium.common.exceptions import WebDriverException, NoSuchElementException, TimeoutException
-from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Initialize colorama
 init()
 
-# Setup basic logging with date and time format
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -26,7 +22,6 @@ lock_files_dir = os.path.join(script_dir, 'lock_files')
 
 stop_threads = False
 
-# Browser operations function
 def browser_operations():
     global stop_threads
     driver = start_browser()
@@ -49,14 +44,12 @@ def browser_operations():
     driver.quit()
 
 def start_browser():
-    logging.info("Starting browser..")
-    geckodriver_path = os.path.join(binaries_dir, "geckodriver.exe")
-    firefox_binary_path = 'C:/Program Files/Mozilla Firefox/firefox.exe'
-    options = Options()
-    options.binary_location = firefox_binary_path
-    options.add_argument('-headless')
-    service = Service(executable_path=geckodriver_path, log_output=os.devnull)
-    driver = webdriver.Firefox(service=service, options=options)
+    logging.info("Starting undetected Chrome browser..")
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = uc.Chrome(options=options)
     driver.get("https://www.tiktok.com/@tiktok/live")
     return driver
 
