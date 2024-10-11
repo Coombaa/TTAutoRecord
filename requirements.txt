@@ -5,3 +5,4 @@ customtkinter
 Pillow
 psutil
 memory-profiler
+undetected-chromedriver
