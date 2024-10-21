@@ -1,74 +1,91 @@
 import os
 import time
-import sys
 import json
 import logging
 from urllib.parse import urlparse
-from colorama import Fore, init
-import undetected_chromedriver as uc
 from selenium.common.exceptions import WebDriverException, NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from .login import check_login_status, launch_login
 
-init()
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-binaries_dir = os.path.join(script_dir, 'binaries')
 json_dir = os.path.join(script_dir, 'json')
-lock_files_dir = os.path.join(script_dir, 'lock_files')
 
-stop_threads = False
+def browser_operations(driver, window_handle, on_login_success=None, on_login_fail=None):
+    driver.switch_to.window(window_handle)
 
-def browser_operations():
-    global stop_threads
-    driver = start_browser()
-    auth(driver)
+    driver.get("https://www.tiktok.com/@tiktok/live")
 
-    while not stop_threads:
+    login_successful = False
+    
+    while True:
         try:
+            time.sleep(5)
+
+            # Check if the user is logged in, and if not, prompt for login
+            logging.info("Checking login status...")
+            if not check_login_status(driver):
+                logging.info("User is not logged in. Redirecting to login page...")
+                launch_login(driver)
+
+                # Check again after attempting to log in
+                if not check_login_status(driver):
+                    logging.error("User failed to log in. Retrying in the next iteration...")
+                    
+                    # Call on_login_fail callback if login fails
+                    if on_login_fail is not None and not login_successful:
+                        on_login_fail()
+                    continue  # Skip this iteration and retry login in the next loop
+
+                logging.info("User successfully logged in after login attempt.")
+            else:
+                logging.info("User is already logged in.")
+
+            # Trigger on_login_success only once after successful login
+            if not login_successful:
+                login_successful = True
+                logging.info("Login success - triggering get_stream_link.")
+                if on_login_success is not None:
+                    on_login_success()
+
+            # Continue checking for live users
+            logging.info("Refreshing the page to check for live users...")
             driver.refresh()
+
+            # Get the live users and write them to a JSON file
+            logging.info("Getting live users...")
             live_user_urls = get_live_users(driver)
+
+            if live_user_urls:
+                logging.info(f"Found {len(live_user_urls)} users currently live.")
+            else:
+                logging.info("No live users found.")
+
             write_to_json(live_user_urls)
+            logging.info("Live users written to JSON file.")
+
+            # Wait for a while before checking again
+            logging.info("Waiting for 10 seconds before checking again...")
             time.sleep(10)
+
         except WebDriverException as e:
             logging.error(f"WebDriverException occurred: {e}")
-            logging.info("Attempting to restart browser...")
-            driver.quit()
             time.sleep(5)
-            driver = start_browser()
-            auth(driver)
 
-    driver.quit()
+        except Exception as e:
+            logging.error(f"Unexpected error occurred: {e}")
+            time.sleep(5)
 
-def start_browser():
-    logging.info("Starting undetected Chrome browser..")
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    driver = uc.Chrome(options=options)
-    driver.get("https://www.tiktok.com/@tiktok/live")
-    return driver
 
-def auth(driver):
-    logging.info("Authenticating..")
-    cookies_path = os.path.join(json_dir, 'cookies.json')
-    if os.path.getsize(cookies_path) <= 0:
-        logging.error("Error: cookies.json is empty. Read the README file!")
-        time.sleep(10)
-        sys.exit()
-    else:
-        with open(cookies_path, 'r') as f:
-            cookies = json.load(f)
-        for cookie in cookies:
-            if 'sameSite' in cookie:
-                del cookie['sameSite']
-            driver.add_cookie(cookie)
-        driver.refresh()
-        logging.info("Successfully authenticated! Starting monitor..")
+def click_element(driver, element):
+    try:
+        driver.execute_script("arguments[0].scrollIntoView(true);", element)
+        element.click()
+    except WebDriverException as e:
+        logging.error(f"Error clicking element: {e}")
 
 def get_live_users(driver):
     live_users_data = []
@@ -117,25 +134,15 @@ def extract_username(url):
 def write_to_json(live_users_data, filename='live_users.json'):
     json_folder_path = json_dir
     file_path = os.path.join(json_folder_path, filename)
+    
     if not os.path.exists(json_folder_path):
         os.makedirs(json_folder_path)
+    
     with open(file_path, 'w') as file:
         json.dump(live_users_data, file, indent=4)
-    logging.info("Live User List Updated!")
-        
-def lock_file_exists(username):
-    lock_file_path = os.path.join(lock_files_dir, f'{username}.lock')
-    return os.path.exists(lock_file_path)
-        
-def main():
-    global stop_threads
+    
+    logging.info(f"{len(live_users_data)} users currently live.")
 
-    browser_operations()
-        
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        logging.info("Script execution stopped by user.")
-    except Exception as e:
-        logging.critical(f"Critical error, stopping script: {e}")
+def main(driver, window_handle, on_login_success=None):
+    return browser_operations(driver, window_handle, on_login_success)
+

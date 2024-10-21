@@ -1,14 +1,12 @@
 import json
 import os
 import re
-import sys
 import time
 import logging
-from selenium.common.exceptions import TimeoutException
-import undetected_chromedriver as uc
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class StreamLink:
     def __init__(self, username, stream_link, profile_picture=None):
@@ -19,16 +17,6 @@ class StreamLink:
 script_dir = Path(__file__).parent.parent
 json_dir = script_dir / 'json'
 lock_files_dir = script_dir / 'lock_files'
-binaries_dir = script_dir / 'binaries'
-
-def load_cookies():
-    try:
-        with open(json_dir / "cookies.json", "r") as file:
-            cookies = json.load(file)
-        return cookies
-    except Exception as e:
-        logging.error(f"Error loading cookies: {e}")
-        return []
 
 def write_stream_links_to_file(username, stream_link):
     stream_links_path = json_dir / "stream_links.json"
@@ -45,6 +33,19 @@ def write_stream_links_to_file(username, stream_link):
             json.dump(data, file, indent=4)
     except Exception as e:
         logging.error(f"Error updating stream links JSON: {e}")
+
+def load_cookies(driver, cookie_file_path):
+    """
+    Load cookies from the specified JSON file and add them to the WebDriver session.
+    """
+    try:
+        with open(cookie_file_path, 'r') as file:
+            cookies = json.load(file)
+            for cookie in cookies:
+                driver.add_cookie(cookie)
+        logging.info(f"Loaded cookies from {cookie_file_path}.")
+    except Exception as e:
+        logging.error(f"Failed to load cookies: {e}")
 
 def correct_url_format(url):
     return url.replace("\\u002F", "/").replace("\\u0026", "&")
@@ -87,32 +88,6 @@ def load_force_flv_users():
         logging.error(f"Error loading force FLV users: {e}")
         return []
 
-def start_browser():
-    logging.info("Starting undetected Chrome browser...")
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    driver = uc.Chrome(options=options)
-    driver.set_page_load_timeout(30)
-    return driver
-
-def auth(driver):
-    time.sleep(2)
-    driver.get("https://www.tiktok.com")
-    cookies_path = json_dir / 'cookies.json'
-    if os.path.getsize(cookies_path) <= 0:
-        logging.error("Error: cookies.json is empty. Read the README file!")
-        sys.exit()
-    else:
-        with open(cookies_path, 'r') as f:
-            cookies = json.load(f)
-        for cookie in cookies:
-            if 'sameSite' in cookie:
-                del cookie['sameSite']
-            driver.add_cookie(cookie)
-        driver.refresh()
-
 def read_stream_links(path=json_dir / "live_users.json"):
     try:
         with open(path, "r") as file:
@@ -136,12 +111,14 @@ def clear_old_stream_links(active_usernames):
     except json.JSONDecodeError as e:
         logging.error(f"Error reading or updating stream links JSON: {e}")
 
-def process_user(driver, user, force_flv_users):
+def process_user(driver, window_handle, user, force_flv_users):
     lock_file_path = lock_files_dir / f"{user.username}.lock"
     if lock_file_path.exists():
         return
 
     try:
+        driver.switch_to.window(window_handle)
+
         driver.get(f"view-source:{user.stream_link}")
         page_source = driver.page_source
         room_id = find_room_id(page_source)
@@ -177,10 +154,17 @@ def process_user(driver, user, force_flv_users):
     except Exception as e:
         logging.error(f"Error processing {user.username}: {e}")
 
-def main():
-    logging.info("Starting the program...")
-    driver = start_browser()
-    auth(driver)
+def main(driver, window_handle, on_cookies_reload=None):
+    logging.info("Starting get_stream_link operations in a new window...")
+
+    cookie_file_path = json_dir / 'cookies.json'
+    try:
+        driver.get("https://www.tiktok.com")
+        load_cookies(driver, cookie_file_path)
+        driver.refresh()
+        logging.info("Cookies loaded and applied. Page refreshed.")
+    except WebDriverException as e:
+        logging.error(f"Failed to apply cookies: {e}")
 
     while True:
         try:
@@ -188,22 +172,22 @@ def main():
             force_flv_users = load_force_flv_users()
             active_stream_links = read_stream_links()
             active_usernames = [user.username for user in active_stream_links]
+
             if active_stream_links:
+                if on_cookies_reload is not None:
+                    logging.info("Reloading cookies due to login success...")
+                    on_cookies_reload()
+
                 for user in active_stream_links:
-                    process_user(driver, user, force_flv_users)
+                    process_user(driver, window_handle, user, force_flv_users)
             else:
                 logging.info("No active stream links found.")
-            
+
             clear_old_stream_links(set(active_usernames))
             time.sleep(5)
+
         except TimeoutException as e:
             logging.error(f"Timeout error in main loop: {e}")
-            driver.quit()
-            driver = start_browser()
-            auth(driver)
         except Exception as e:
             logging.error(f"Error in main loop: {e}")
         time.sleep(1)
-
-if __name__ == "__main__":
-    main()
