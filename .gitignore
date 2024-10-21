@@ -1,6 +1,7 @@
 /lock_files/*
 /videos/*
 /segments/*
+/session/*
 /modules/__pycache__
 geckodriver.log
 cargo.lock
