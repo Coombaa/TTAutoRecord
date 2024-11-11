@@ -57,7 +57,7 @@ def start_browser():
     options.add_argument('-headless')
     service = Service(executable_path=geckodriver_path, log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
-    driver.get("https://www.tiktok.com/@tiktok/live")
+    driver.get("https://www.tiktok.com/live/category/lifestyle/chatting")
     return driver
 
 def auth(driver):
