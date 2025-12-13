@@ -10,7 +10,6 @@ from selenium.webdriver.firefox.options import Options
 from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 
-# Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 class StreamLink:
@@ -62,10 +61,8 @@ def find_room_id(page_source):
         return None
 
 def find_stream_link(page_source, username, force_flv_users):
-    # We are using the exact same pattern the "force flv" logic used previously
     flv_pattern = re.compile(r'"rtmp_pull_url":\s*"([^"]+)"')
     
-    # Apply this logic to everyone (ignoring the force_flv_users list check)
     search = flv_pattern.search(page_source)
     if search:
         return correct_url_format(search.group(1))
@@ -94,7 +91,7 @@ def start_browser():
     options.set_preference("network.http.use-cache", False)
     service = Service(executable_path=geckodriver_path)
     driver = webdriver.Firefox(service=service, options=options)
-    driver.set_page_load_timeout(60) # Increased timeout
+    driver.set_page_load_timeout(60)
     return driver
 
 def auth(driver):
@@ -113,7 +110,6 @@ def auth(driver):
                     del cookie['sameSite']
                 driver.add_cookie(cookie)
             
-            # Added timeout protection for the refresh
             try:
                 driver.refresh()
             except TimeoutException:
