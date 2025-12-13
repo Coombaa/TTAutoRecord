@@ -7,10 +7,9 @@ import logging
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 
-# Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 class StreamLink:
@@ -62,37 +61,10 @@ def find_room_id(page_source):
         return None
 
 def find_stream_link(page_source, username, force_flv_users):
-    # Priority list: Highest quality first
-    priorities = ["HD1", "SD1", "SD2", "LD"]
-
-    # 1. Try to find the specific quality keys inside the source
-    for quality in priorities:
-        # Matches: "HD1":"http..." OR \"HD1\":\"http...\"
-        pattern = re.compile(rf'[\"\\]*{quality}[\"\\]*\s*:\s*[\"\\]*(https?://[^\"\\\s]+)[\"\\]*')
-        search = pattern.search(page_source)
-        
-        if search:
-            link = correct_url_format(search.group(1))
-            if "flv" in link:
-                logging.info(f"Found {quality} stream for {username}")
-                return link
-
-    # 2. Fallback: Search inside flv_pull_url object
-    flv_section_pattern = re.compile(r'"flv_pull_url"\s*:\s*\{(.*?)\}')
-    flv_section_match = flv_section_pattern.search(page_source)
-    
-    if flv_section_match:
-        content = flv_section_match.group(1)
-        url_match = re.search(r'(https?://[^"\\]+)', content)
-        if url_match:
-            logging.info(f"Found fallback FLV inside object for {username}")
-            return correct_url_format(url_match.group(1))
-
-    # 3. Final Fallback: Generic rtmp_pull_url
     flv_pattern = re.compile(r'"rtmp_pull_url":\s*"([^"]+)"')
+    
     search = flv_pattern.search(page_source)
     if search:
-        logging.info(f"Found generic RTMP/FLV stream for {username}")
         return correct_url_format(search.group(1))
 
     logging.info("No matching stream link found in the page source.")
@@ -141,8 +113,8 @@ def auth(driver):
             try:
                 driver.refresh()
             except TimeoutException:
-                logging.warning("Timeout during auth refresh, but continuing...")
-                driver.execute_script("window.stop();") # Stop loading and proceed
+                logging.warning("Timeout during auth refresh, continuing anyway...")
+                driver.execute_script("window.stop();")
 
     except Exception as e:
         logging.error(f"Error during authentication: {e}")
