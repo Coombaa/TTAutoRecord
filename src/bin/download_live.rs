@@ -41,13 +41,26 @@ async fn download_livestream(username: &str, stream_link: &str, lock: Arc<Mutex<
 
     let stream_id = extract_stream_id(stream_link);
     let datetime = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-    let segment_path = format!("{}/{}_{}_{}.mp4", user_segment_dir, username, stream_id, datetime);
+    
+    let segment_path = format!("{}/{}_{}_{}.mkv", user_segment_dir, username, stream_id, datetime);
 
     let status = Command::new(ffmpeg_path)
+        .arg("-reconnect")
+        .arg("1")
+        .arg("-reconnect_at_eof")
+        .arg("1")
+        .arg("-reconnect_streamed")
+        .arg("1")
+        .arg("-fflags")
+        .arg("+genpts+igndts")
+        .arg("-discard")
+        .arg("nokey")
         .arg("-i")
         .arg(stream_link)
         .arg("-c")
         .arg("copy")
+        .arg("-bsf:v")
+        .arg("h264_mp4toannexb")
         .arg("-bsf:a")
         .arg("aac_adtstoasc")
         .arg("-y")
@@ -62,7 +75,9 @@ async fn download_livestream(username: &str, stream_link: &str, lock: Arc<Mutex<
         sleep(Duration::from_secs(1)).await;
     }
 
-    fs::remove_file(lock_file_path)?;
+    if Path::new(&lock_file_path).exists() {
+        fs::remove_file(lock_file_path)?;
+    }
     Ok(())
 }
 
@@ -78,22 +93,21 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
     let paths = fs::read_dir(user_segment_dir)?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.display().to_string().contains(stream_id) && path.extension().unwrap_or_default() == "mp4")
+        .filter(|path| path.is_file() && path.display().to_string().contains(stream_id) && path.extension().unwrap_or_default() == "mkv")
         .collect::<Vec<_>>();
 
-    if paths.len() > 0 {
+    if !paths.is_empty() {
         let concat_file_path = format!("{}/{}_{}_concat.txt", user_segment_dir, username, stream_id);
         let mut concat_file = File::create(&concat_file_path)?;
-
-        let _now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         for path in &paths {
             writeln!(concat_file, "file '{}'", path.canonicalize()?.display().to_string().replace('\\', "/"))?;
         }
 
+        let datetime = Local::now().format("%Y-%m-%d").to_string();
+        let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
+
         if paths.len() > 1 {
-            let datetime = Local::now().format("%Y-%m-%d").to_string();
-            let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
             let status = Command::new(ffmpeg_path)
                 .arg("-f")
                 .arg("concat")
@@ -114,10 +128,20 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
                 println!("{} - ERROR - Error concatenating videos for user {} with stream id {}", now, username, stream_id);
             }
         } else {
-            let datetime = Local::now().format("%Y-%m-%d").to_string();
-            let single_output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
-            fs::copy(&paths[0], &single_output_path)?;
-            let _now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let status = Command::new(ffmpeg_path)
+                .arg("-i")
+                .arg(&paths[0])
+                .arg("-c")
+                .arg("copy")
+                .arg("-y")
+                .arg(&output_path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            if !status.success() {
+                fs::copy(&paths[0], &output_path).ok();
+            }
         }
     } else {
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -137,7 +161,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let segments_dir = "../segments";
     let videos_dir = "../videos";
 
-    // Clear .lock files from lock_files directory
     if let Err(e) = clear_lock_files(lock_files_dir).await {
         eprintln!(" - ERROR - Failed to clear lock files: {}", e);
     }
@@ -184,7 +207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => {
                 eprintln!(" - ERROR - Failed to read stream links: {}", e);
                 sleep(Duration::from_secs(3)).await;
-                continue; // Skip this loop iteration and try again
+                continue; 
             }
         }
         sleep(Duration::from_secs(3)).await;

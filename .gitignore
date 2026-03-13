@@ -6,3 +6,4 @@ geckodriver.log
 cargo.lock
 cargo.toml
 /target/
+/binaries/ffmpeg.exe
