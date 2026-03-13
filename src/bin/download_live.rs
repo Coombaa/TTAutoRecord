@@ -41,8 +41,7 @@ async fn download_livestream(username: &str, stream_link: &str, lock: Arc<Mutex<
 
     let stream_id = extract_stream_id(stream_link);
     let datetime = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-    
-    let segment_path = format!("{}/{}_{}_{}.mkv", user_segment_dir, username, stream_id, datetime);
+    let segment_path = format!("{}/{}_{}_{}.ts", user_segment_dir, username, stream_id, datetime);
 
     let status = Command::new(ffmpeg_path)
         .arg("-reconnect")
@@ -51,18 +50,20 @@ async fn download_livestream(username: &str, stream_link: &str, lock: Arc<Mutex<
         .arg("1")
         .arg("-reconnect_streamed")
         .arg("1")
+        .arg("-err_detect")
+        .arg("ignore_err")
         .arg("-fflags")
         .arg("+genpts+igndts")
-        .arg("-discard")
-        .arg("nokey")
         .arg("-i")
         .arg(stream_link)
+        .arg("-map")
+        .arg("0")
         .arg("-c")
         .arg("copy")
         .arg("-bsf:v")
         .arg("h264_mp4toannexb")
-        .arg("-bsf:a")
-        .arg("aac_adtstoasc")
+        .arg("-f")
+        .arg("mpegts")
         .arg("-y")
         .arg(&segment_path)
         .stdout(Stdio::null())
@@ -72,7 +73,6 @@ async fn download_livestream(username: &str, stream_link: &str, lock: Arc<Mutex<
     if status.success() {
         sleep(Duration::from_secs(1)).await;
         concatenate_segments(&user_segment_dir, username, &stream_id, ffmpeg_path)?;
-        sleep(Duration::from_secs(1)).await;
     }
 
     if Path::new(&lock_file_path).exists() {
@@ -93,7 +93,7 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
     let paths = fs::read_dir(user_segment_dir)?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.display().to_string().contains(stream_id) && path.extension().unwrap_or_default() == "mkv")
+        .filter(|path| path.is_file() && path.display().to_string().contains(stream_id) && path.extension().unwrap_or_default() == "ts")
         .collect::<Vec<_>>();
 
     if !paths.is_empty() {
@@ -107,47 +107,27 @@ fn concatenate_segments(user_segment_dir: &str, username: &str, stream_id: &str,
         let datetime = Local::now().format("%Y-%m-%d").to_string();
         let output_path = format!("{}/{}_{}_{}.mp4", VIDEOS_DIR, username, stream_id, datetime);
 
+        let mut cmd = Command::new(ffmpeg_path);
         if paths.len() > 1 {
-            let status = Command::new(ffmpeg_path)
-                .arg("-f")
-                .arg("concat")
-                .arg("-safe")
-                .arg("0")
-                .arg("-i")
-                .arg(&concat_file_path)
-                .arg("-c")
-                .arg("copy")
-                .arg("-y")
-                .arg(&output_path)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()?;
-
-            if !status.success() {
-                let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                println!("{} - ERROR - Error concatenating videos for user {} with stream id {}", now, username, stream_id);
-            }
+            cmd.arg("-f").arg("concat").arg("-safe").arg("0").arg("-i").arg(&concat_file_path);
         } else {
-            let status = Command::new(ffmpeg_path)
-                .arg("-i")
-                .arg(&paths[0])
-                .arg("-c")
-                .arg("copy")
-                .arg("-y")
-                .arg(&output_path)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()?;
-
-            if !status.success() {
-                fs::copy(&paths[0], &output_path).ok();
-            }
+            cmd.arg("-i").arg(&paths[0]);
         }
-    } else {
-        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        println!("{} - ERROR - No valid segments found for user {} with stream id {}", now, username, stream_id);
-    }
 
+        let status = cmd
+            .arg("-c")
+            .arg("copy")
+            .arg("-y")
+            .arg(&output_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
+
+        if !status.success() {
+            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            println!("{} - ERROR - Failed to finalize video for user {}", now, username);
+        }
+    }
     Ok(())
 }
 
@@ -183,21 +163,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !Path::new(&lock_file_path).exists() {
                         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
                         println!("{} - INFO - Downloading livestream for user: {}", now, username);
-                        if let Err(e) = fs::write(&lock_file_path, "") {
-                            eprintln!("- ERROR - Error creating lock file for user {}: {}", username, e);
-                            continue;
-                        }
+                        fs::write(&lock_file_path, "").ok();
+                        
                         let lock = Arc::new(Mutex::new(()));
                         let username = username.clone();
                         let stream_link = stream_link.clone();
                         let handle = runtime.handle().clone();
                         let ffmpeg_path = current_exe_path()?.parent().unwrap().join("ffmpeg.exe");
+                        
                         handle.spawn(async move {
                             if let Err(e) = download_livestream(&username, &stream_link, lock, &ffmpeg_path).await {
                                 eprintln!(" - ERROR - failed to download livestream for user {}: {}", username, e);
+                                let lock_path = format!("{}/{}.lock", LOCK_FILES_DIR, username);
+                                fs::remove_file(lock_path).ok();
                             } else {
                                 let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                                println!("{} - INFO - Livestream downloaded successfully for user: {}", now, username);
+                                println!("{} - INFO - Livestream finished for user: {}", now, username);
                             }
                         });
                         sleep(Duration::from_secs(1)).await;
@@ -206,8 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 eprintln!(" - ERROR - Failed to read stream links: {}", e);
-                sleep(Duration::from_secs(3)).await;
-                continue; 
+                sleep(Duration::from_secs(5)).await;
             }
         }
         sleep(Duration::from_secs(3)).await;
